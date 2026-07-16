@@ -45,6 +45,7 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const analyzerRef = useRef(new SquatAnalyzer());
   // 첫 1회 완료 시각 — 운동 시간(durationSec) 계산 기준. 초기화/저장 시 리셋.
   const firstRepAtRef = useRef<number | null>(null);
+  const frameCounterRef = useRef(0);
 
   const requestPermission = useCallback(() => {
     camPermission.requestPermission().then(setHasCamPermission);
@@ -58,13 +59,17 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
         return;
       }
 
-      const frameDims = vc.getFrameDims(result);
-      setOverlayPoints(
-        poseLandmarks.map((lm) => ({
-          ...vc.convertPoint(frameDims, { x: lm.x, y: lm.y }),
-          visibility: lm.visibility,
-        })),
-      );
+      // 2프레임당 1회만 화면 스켈레톤 라인(overlayPoints) 업데이트를 수행하여 UI 렌더링 부하 완화
+      frameCounterRef.current += 1;
+      if (frameCounterRef.current % 2 === 0) {
+        const frameDims = vc.getFrameDims(result);
+        setOverlayPoints(
+          poseLandmarks.map((lm) => ({
+            ...vc.convertPoint(frameDims, { x: lm.x, y: lm.y }),
+            visibility: lm.visibility,
+          })),
+        );
+      }
 
       const next = analyzerRef.current.analyze(poseLandmarks);
       
@@ -75,7 +80,9 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
           prev.state === next.state &&
           prev.feedback === next.feedback &&
           Math.abs(prev.angles.leftKnee - next.angles.leftKnee) < 2.0 &&
-          Math.abs(prev.angles.rightKnee - next.angles.rightKnee) < 2.0
+          Math.abs(prev.angles.rightKnee - next.angles.rightKnee) < 2.0 &&
+          Math.abs(prev.angles.leftHip - next.angles.leftHip) < 3.0 &&
+          Math.abs(prev.angles.rightHip - next.angles.rightHip) < 3.0
         ) {
           return prev;
         }

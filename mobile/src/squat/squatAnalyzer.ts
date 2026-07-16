@@ -116,18 +116,25 @@ export class SquatAnalyzer {
     // ---- 카운팅을 막지 않는 보조 안내용 체크 (아래에서 우선순위대로 덮어씀) ----
     // 상체가 과도하게 앞으로 숙여짐 (엉덩이 각도가 지나치게 작음)
     const isLeaningForward = targetKneeAngle < 140 && targetHipAngle < 50;
-    // 몸이 좌우 한쪽으로 기울어짐 (양쪽 엉덩이 높이 차이가 엉덩이 폭 대비 큼)
-    const isHipTilted =
+    const isFrontView =
       leftLegVisible &&
       rightLegVisible &&
       hipWidth > shoulderWidth * 0.6 &&
+      shoulderWidth > 0.15;
+
+    // 몸이 좌우 한쪽으로 기울어짐 (양쪽 엉덩이 높이 차이가 엉덩이 폭 대비 큼)
+    const isHipTilted =
+      isFrontView &&
       Math.abs(leftHip.y - rightHip.y) > hipWidth * 0.35;
     // 고개가 많이 처짐 (코가 어깨 라인보다 많이 아래 = 시선이 바닥을 향함)
     const shoulderMidY = (leftShoulder.y + rightShoulder.y) / 2;
-    const isHeadDroppingDown = shoulderMidY - nose.y < shoulderWidth * 0.25;
-    // 스탠스(발 너비)가 어깨너비 대비 너무 좁거나 넓음 — 서 있을 때만 의미 있는 지표
-    const isStanceTooNarrow = ankleWidth < shoulderWidth * 0.6;
-    const isStanceTooWide = ankleWidth > shoulderWidth * 1.8;
+    // 정면 뷰일 때는 어깨 폭 대비 비율로, 측면 뷰일 때는 고정 임계치(0.06) 기준으로 고개 처짐 판단
+    const isHeadDroppingDown = isFrontView
+      ? (shoulderMidY - nose.y) < shoulderWidth * 0.25
+      : (shoulderMidY - nose.y) < 0.06;
+    // 스탠스(발 너비)가 어깨너비 대비 너무 좁거나 넓음 — 정면 뷰이고 서 있을 때만 의미 있는 지표
+    const isStanceTooNarrow = isFrontView && ankleWidth < shoulderWidth * 0.6;
+    const isStanceTooWide = isFrontView && ankleWidth > shoulderWidth * 1.8;
 
     let repCompleted = false;
     let state: SquatState;
