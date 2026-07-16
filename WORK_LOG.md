@@ -40,3 +40,10 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - `SetupGuideScreen.tsx` 신설: 카메라 거리(2~3m)/방향(정면 촬영 권장, 측면은 무릎 모임 감지 등 일부 피드백 제한)/높이(허리~가슴, 수직 거치)/조명/복장을 텍스트+SVG 다이어그램(폰-사람 간 거리, 높이 표시)으로 안내. react-native-svg로 그림, 별도 이미지 에셋 없음.
 - `App.tsx`가 앱 시작 시 이 가이드를 먼저 보여주고 "시작하기"를 누르면 `CameraScreen`으로 전환하도록 로컬 state로만 처리 (2개 화면뿐이라 react-navigation 등 별도 라이브러리 도입 안 함). `CameraScreen` 상단에 `?` 버튼을 추가해 언제든 가이드로 돌아갈 수 있게 함.
 - "다시 보지 않기" 같은 영구 저장은 아직 없음 (AsyncStorage 등 필요) — 필요하면 추후 추가.
+
+## 2026-07-16 [Antigravity] — 클로드 추가 자세 피드백 및 안내 화면 결함 수선
+
+- **고개 처짐 감지 로직 정상화**: `squatAnalyzer.ts`에서 Y축 방향성(아래로 갈수록 값 증가) 및 코와 어깨의 관계를 고려하지 않고 작성된 `nose.y - shoulderMidY > shoulderWidth * 0.9` 부등식 조건(절대 활성화될 수 없음)을 `shoulderMidY - nose.y < shoulderWidth * 0.25`로 변경하여, 목이 아래로 구부러질 때 정상적으로 시선 경고가 트리거되도록 수정.
+- **골반 기울임 오경고 방지**: 3/4 뷰나 측면 뷰에서 엉덩이 너비(`hipWidth`)가 perspective compression에 의해 급격히 작아져 엉덩이가 비뚤어지지 않았는데도 경고가 울리는 버그 차단. 골반 너비가 어깨 너비의 60% 이상인 정면 구도(`hipWidth > shoulderWidth * 0.6`)일 때만 기울임 상태를 검출하도록 가드 조건 삽입.
+- **설치 가이드 SVG 텍스트 배치 개선**: `SetupGuideScreen.tsx` 다이어그램에서 휴대폰 및 인물의 가로축 좌표(`phoneX = 60`, `personX = 270`)를 우측으로 시프트해 화면 왼쪽 경계에서 글자가 잘려 나오는 현상 방지. 또한 SVG `<Text>` 내에서 `\n` 문자가 동작하지 않아 뭉개지던 "허리\n높이" 라벨을 2개의 개별 `<SvgText>` 태그로 분리 배치하여 선명하게 줄바꿈 출력 완료.
+

@@ -114,10 +114,13 @@ export class SquatAnalyzer {
     const isLeaningForward = targetKneeAngle < 140 && targetHipAngle < 50;
     // 몸이 좌우 한쪽으로 기울어짐 (양쪽 엉덩이 높이 차이가 엉덩이 폭 대비 큼)
     const isHipTilted =
-      leftLegVisible && rightLegVisible && Math.abs(leftHip.y - rightHip.y) > hipWidth * 0.35;
+      leftLegVisible &&
+      rightLegVisible &&
+      hipWidth > shoulderWidth * 0.6 &&
+      Math.abs(leftHip.y - rightHip.y) > hipWidth * 0.35;
     // 고개가 많이 처짐 (코가 어깨 라인보다 많이 아래 = 시선이 바닥을 향함)
     const shoulderMidY = (leftShoulder.y + rightShoulder.y) / 2;
-    const isHeadDroppingDown = nose.y - shoulderMidY > shoulderWidth * 0.9;
+    const isHeadDroppingDown = shoulderMidY - nose.y < shoulderWidth * 0.25;
     // 스탠스(발 너비)가 어깨너비 대비 너무 좁거나 넓음 — 서 있을 때만 의미 있는 지표
     const isStanceTooNarrow = ankleWidth < shoulderWidth * 0.6;
     const isStanceTooWide = ankleWidth > shoulderWidth * 1.8;

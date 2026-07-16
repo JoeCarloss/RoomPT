@@ -10,8 +10,8 @@ function SetupDiagram() {
   const width = 320;
   const height = 200;
   const groundY = 170;
-  const phoneX = 40;
-  const personX = 250;
+  const phoneX = 60;
+  const personX = 270;
 
   return (
     <Svg width={width} height={height}>
@@ -71,8 +71,11 @@ function SetupDiagram() {
         stroke="#ff2a6d"
         strokeWidth={2}
       />
-      <SvgText x={phoneX - 30} y={groundY - 38} fontSize={10} fill="#ff2a6d" textAnchor="middle">
-        허리{'\n'}높이
+      <SvgText x={phoneX - 35} y={groundY - 45} fontSize={10} fill="#ff2a6d" textAnchor="middle">
+        허리 높이
+      </SvgText>
+      <SvgText x={phoneX - 35} y={groundY - 33} fontSize={10} fill="#ff2a6d" textAnchor="middle">
+        수직 거치
       </SvgText>
     </Svg>
   );
