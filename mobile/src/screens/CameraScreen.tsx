@@ -9,6 +9,7 @@ import {
   type ViewCoordinator,
 } from 'react-native-mediapipe';
 import { useCameraPermission, type CameraPosition } from 'react-native-vision-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PoseOverlay, type OverlayPoint } from '../components/PoseOverlay';
 import { SquatAnalyzer, type SquatAnalysis } from '../squat/squatAnalyzer';
 import { speak } from '../services/tts';
@@ -28,6 +29,7 @@ const INITIAL_ANALYSIS: SquatAnalysis = {
 
 export function CameraScreen() {
   const camPermission = useCameraPermission();
+  const insets = useSafeAreaInsets();
   const [hasCamPermission, setHasCamPermission] = useState(camPermission.hasPermission);
   const [activeCamera, setActiveCamera] = useState<CameraPosition>('front');
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
@@ -57,7 +59,20 @@ export function CameraScreen() {
       );
 
       const next = analyzerRef.current.analyze(poseLandmarks);
-      setAnalysis(next);
+      
+      setAnalysis((prev) => {
+        // Prevent state updates and components re-rendering if there is no significant change in metrics
+        if (
+          prev.count === next.count &&
+          prev.state === next.state &&
+          prev.feedback === next.feedback &&
+          Math.abs(prev.angles.leftKnee - next.angles.leftKnee) < 2.0 &&
+          Math.abs(prev.angles.rightKnee - next.angles.rightKnee) < 2.0
+        ) {
+          return prev;
+        }
+        return next;
+      });
 
       if (next.state === 'WARNING') {
         speak(next.feedback);
@@ -119,7 +134,7 @@ export function CameraScreen() {
       />
       <PoseOverlay landmarks={overlayPoints} width={viewSize.width} height={viewSize.height} />
 
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { top: insets.top > 0 ? insets.top + 8 : 16 }]}>
         <View
           style={[
             styles.stateBadge,
@@ -137,7 +152,7 @@ export function CameraScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.bottomPanel}>
+      <View style={[styles.bottomPanel, { paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20 }]}>
         <View style={styles.countRow}>
           <Text style={styles.countText}>{analysis.count}</Text>
           <Text style={styles.countLabel}>회 (REPS)</Text>

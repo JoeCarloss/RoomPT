@@ -62,10 +62,26 @@ export class SquatAnalyzer {
       rightHip: calculateAngle(rightShoulder, rightHip, rightKnee),
     };
 
-    const avgKneeAngle = (angles.leftKnee + angles.rightKnee) / 2;
+    // 가시성이 현저히 낮은 다리는 계산에서 제외하고 한쪽 다리 중심의 측면 분석 적용
+    const leftVisible = (leftKnee.visibility ?? 1) > 0.5 && (leftAnkle.visibility ?? 1) > 0.5;
+    const rightVisible = (rightKnee.visibility ?? 1) > 0.5 && (rightAnkle.visibility ?? 1) > 0.5;
+
+    let targetKneeAngle = (angles.leftKnee + angles.rightKnee) / 2;
+    if (leftVisible && !rightVisible) {
+      targetKneeAngle = angles.leftKnee;
+    } else if (!leftVisible && rightVisible) {
+      targetKneeAngle = angles.rightKnee;
+    }
+
     const kneeWidth = Math.abs(leftKnee.x - rightKnee.x);
     const ankleWidth = Math.abs(leftAnkle.x - rightAnkle.x);
-    const isKneeCollapsing = avgKneeAngle < 120 && kneeWidth < ankleWidth * 0.75;
+    
+    // 무릎 모임 감지는 양쪽 무릎과 발목이 모두 선명하게 보일 때만 판단하여 측면 오작동 차단
+    const isKneeCollapsing = 
+      leftVisible && 
+      rightVisible && 
+      targetKneeAngle < 120 && 
+      kneeWidth < ankleWidth * 0.75;
 
     let repCompleted = false;
     let state: SquatState;
@@ -74,11 +90,11 @@ export class SquatAnalyzer {
     if (isKneeCollapsing) {
       state = 'WARNING';
       feedback = '주의: 무릎이 안으로 모이고 있습니다. 발끝 방향으로 무릎을 넓혀주세요!';
-    } else if (avgKneeAngle < 95) {
+    } else if (targetKneeAngle < 95) {
       state = 'DOWN';
       this.poseState = 'DOWN';
       feedback = '완전히 내려왔습니다. 천천히 무릎과 엉덩이를 펴며 일어서세요.';
-    } else if (avgKneeAngle > 155) {
+    } else if (targetKneeAngle > 155) {
       state = 'UP';
       if (this.poseState === 'DOWN') {
         this.poseState = 'UP';

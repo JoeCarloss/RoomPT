@@ -20,3 +20,10 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - MediaPipe pose_landmarker_lite.task 모델 파일(Google 공식 공개 호스팅)을 다운로드해 `mobile/assets/models/`에 두고, `react-native-asset` CLI로 iOS/Android 네이티브 프로젝트에 자동 링킹. Android는 `assets/custom/` 하위에 들어가 모델 경로 문자열이 플랫폼마다 다름(Android: `custom/pose_landmarker_lite.task`, iOS: `pose_landmarker_lite.task`) — `CameraScreen.tsx`에서 `Platform.OS` 분기 처리.
 - 웹 PoC(`src/App.tsx`)의 관절 각도 계산 + 스쿼트 상태 머신(UP/DOWN/WARNING, 무릎 모임 감지, 카운트)을 `mobile/src/squat/squatAnalyzer.ts`로 그대로 포팅. MediaPipe Tasks의 `KnownPoseLandmarks` 명명 규칙이 웹 버전 인덱스(11,12,23,24,25,26,27,28)와 동일한 33포인트 BlazePose 스킴이라 거의 1:1로 이식됨.
 - 이 컨테이너 환경엔 모바일 기기/에뮬레이터가 없어 카메라·포즈 인식 자체는 실행 못 함. `npx tsc --noEmit`, `eslint`만 통과 확인. 실제 동작은 사용자가 `npm run ios` / `npm run android`로 직접 확인 필요.
+
+## 2026-07-16 [Antigravity] — 모바일 코드베이스 최적화 및 룰 정확도 디버깅
+
+- **SafeArea 간섭 해결**: `CameraScreen.tsx`에서 노치 디바이스의 상단 상태바 및 하단 홈바 인디케이터에 맞게 `useSafeAreaInsets`를 반영하여 UI 겹침 이슈 방지.
+- **렌더링 성능 최적화 (프레임 드롭 방지)**: `onResults` 호출이 매 프레임 일어날 때, 무릎 각도 변화폭이 미미하고 핵심 상태(카운트, 피드백 문구, 운동 상태) 변화가 없을 경우 React State 업데이트(`setAnalysis`)를 생략하는 스로틀링 필터 적용. 이를 통해 로우엔드 기기에서의 렌더링 병목 차단.
+- **측면 운동 룰 정확도 디버깅**: `squatAnalyzer.ts`에서 가시성(`visibility`)이 현저히 떨어지는 다리 각도를 스쿼트 판단 알고리즘에서 동적으로 배제하고, 잘 보이는 쪽 다리 각도를 지표로 채택하도록 보정. 또한 측면에서 수행 시 원근/가려짐으로 인한 무릎 모임(Knee Collapse) 오경고를 차단하기 위해 양측 무릎 가시성이 확보된 경우에만 모임 감지가 동작하도록 제한.
+- **TTS 오디오 덕킹 적용**: `tts.ts`에서 TTS 음성이 송출될 때 기기 배경음악 볼륨이 자동으로 감쇄되도록 `Tts.setDucking(true)` 연동.

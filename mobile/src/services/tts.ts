@@ -9,6 +9,7 @@ async function ensureInit(): Promise<void> {
   if (initialized) return;
   await Tts.getInitStatus();
   await Tts.setDefaultLanguage('ko-KR');
+  await Tts.setDucking(true);
   initialized = true;
 }
 
