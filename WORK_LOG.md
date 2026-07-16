@@ -59,3 +59,11 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - 아키텍처, 기술 스택, 핵심 기능(룰 기반 피드백 항목 구체적으로 명시), 마일스톤 섹션을 현재 구현 상태에 맞게 전면 재작성. LLM/대화형 코칭/운동 기록은 "보류" 단계로 명시하고 왜 보류 중인지(서버 없는 구조에서 API 키 노출 문제 등) 이유를 남겨둠. 웹 PoC와 mobile/ RN 앱이 둘 다 저장소에 있다는 사실도 문서에 명시.
 - 사용자가 다른 PC에서도 같은 구조로 작업할 예정이라고 해서 init.md에 "여러 기기에서 개발 환경 설정" 섹션 추가 (클론 방법, JDK 17 필요성, `npm install` 시 postinstall이 patch-package 자동 실행한다는 점, iOS는 `.xcworkspace`로 열어야 한다는 점 등 이번 세션에서 실제로 겪은 함정들 위주로 기록).
 
+## 2026-07-17 [Claude] — 운동 기록 저장 기능 추가 (온디바이스, AsyncStorage)
+
+- `@react-native-async-storage/async-storage` 도입 — 서버 없는 구조 유지, 기록은 기기 안에만 저장. `workoutStorage.ts` 서비스 신설 (저장/조회/개별·전체 삭제, 손상된 JSON은 빈 목록으로 폴백).
+- 기록 단위는 "세션": `CameraScreen`에 **완료** 버튼 추가 → 현재 횟수·운동 시간(첫 1회 완료 시점부터 측정)을 저장하고 카운터 리셋. 0회일 땐 저장 안 됨(Alert 안내). 횟수는 스로틀링된 React state가 아니라 `SquatAnalyzer`에 `getCount()`를 추가해 소스에서 직접 읽음.
+- `HistoryScreen` 신설: 총 세션/누적 횟수 통계 + 기록 목록(FlatList) + 삭제. 화면 전환은 기존 결정대로 react-navigation 없이 `App.tsx` 로컬 state(`'guide' | 'camera' | 'history'`)로 처리.
+- **알려진 한계 (기존 동작과 동일)**: 카메라 화면에서 기록/가이드 화면으로 이동하면 `CameraScreen`이 언마운트되어 진행 중이던 카운트가 사라짐 — 가이드 `?` 버튼도 원래 같은 동작이라 일관성 유지 차원에서 그대로 둠. 운동 중엔 완료를 먼저 누르면 됨.
+- iOS `pod install` 실행해 `Podfile.lock`/`project.pbxproj` 갱신 커밋 (다른 PC에서 `pod install`만 다시 돌리면 됨). `Gemfile.lock`도 이번에 처음 커밋됨(이 맥에서 `bundle install` 최초 실행). 기기 없는 환경이라 이번에도 tsc/eslint까지만 검증 — 실기기에서 저장/조회 동작 확인 필요.
+

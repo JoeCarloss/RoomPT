@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   MediapipeCamera,
   RunningMode,
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PoseOverlay, type OverlayPoint } from '../components/PoseOverlay';
 import { SquatAnalyzer, type SquatAnalysis } from '../squat/squatAnalyzer';
 import { speak } from '../services/tts';
+import { saveRecord } from '../services/workoutStorage';
 
 // react-native-asset links assets/models/* into android/app/src/main/assets/custom/
 // on Android, but flattens into the app bundle root on iOS.
@@ -29,9 +30,10 @@ const INITIAL_ANALYSIS: SquatAnalysis = {
 
 interface CameraScreenProps {
   onShowGuide: () => void;
+  onShowHistory: () => void;
 }
 
-export function CameraScreen({ onShowGuide }: CameraScreenProps) {
+export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) {
   const camPermission = useCameraPermission();
   const insets = useSafeAreaInsets();
   const [hasCamPermission, setHasCamPermission] = useState(camPermission.hasPermission);
@@ -41,6 +43,8 @@ export function CameraScreen({ onShowGuide }: CameraScreenProps) {
   const [analysis, setAnalysis] = useState<SquatAnalysis>(INITIAL_ANALYSIS);
 
   const analyzerRef = useRef(new SquatAnalyzer());
+  // 첫 1회 완료 시각 — 운동 시간(durationSec) 계산 기준. 초기화/저장 시 리셋.
+  const firstRepAtRef = useRef<number | null>(null);
 
   const requestPermission = useCallback(() => {
     camPermission.requestPermission().then(setHasCamPermission);
@@ -81,6 +85,9 @@ export function CameraScreen({ onShowGuide }: CameraScreenProps) {
       if (next.state === 'WARNING') {
         speak(next.feedback);
       } else if (next.repCompleted) {
+        if (firstRepAtRef.current === null) {
+          firstRepAtRef.current = Date.now();
+        }
         speak(`${next.count}회!`, true);
       }
     },
@@ -100,8 +107,29 @@ export function CameraScreen({ onShowGuide }: CameraScreenProps) {
 
   const reset = useCallback(() => {
     analyzerRef.current.reset();
+    firstRepAtRef.current = null;
     setAnalysis(INITIAL_ANALYSIS);
   }, []);
+
+  const finishWorkout = useCallback(() => {
+    const reps = analyzerRef.current.getCount();
+    if (reps === 0) {
+      Alert.alert('저장할 기록 없음', '스쿼트를 1회 이상 완료한 뒤 저장할 수 있습니다.');
+      return;
+    }
+    const durationSec =
+      firstRepAtRef.current === null
+        ? 0
+        : Math.round((Date.now() - firstRepAtRef.current) / 1000);
+    saveRecord({ endedAt: new Date().toISOString(), reps, durationSec })
+      .then(() => {
+        speak(`운동 완료! ${reps}회 기록했습니다.`, true);
+        reset();
+      })
+      .catch(() => {
+        Alert.alert('저장 실패', '기록을 저장하지 못했습니다. 다시 시도해주세요.');
+      });
+  }, [reset]);
 
   const flipCamera = useCallback(() => {
     setActiveCamera((prev) => (prev === 'front' ? 'back' : 'front'));
@@ -155,6 +183,9 @@ export function CameraScreen({ onShowGuide }: CameraScreenProps) {
           <Pressable style={styles.flipButton} onPress={onShowGuide}>
             <Text style={styles.flipButtonText}>?</Text>
           </Pressable>
+          <Pressable style={styles.flipButton} onPress={onShowHistory}>
+            <Text style={styles.flipButtonText}>기록</Text>
+          </Pressable>
           <Pressable style={styles.flipButton} onPress={flipCamera}>
             <Text style={styles.flipButtonText}>카메라 전환</Text>
           </Pressable>
@@ -165,6 +196,9 @@ export function CameraScreen({ onShowGuide }: CameraScreenProps) {
         <View style={styles.countRow}>
           <Text style={styles.countText}>{analysis.count}</Text>
           <Text style={styles.countLabel}>회 (REPS)</Text>
+          <Pressable style={styles.finishButton} onPress={finishWorkout}>
+            <Text style={styles.finishButtonText}>완료</Text>
+          </Pressable>
           <Pressable style={styles.resetButton} onPress={reset}>
             <Text style={styles.resetButtonText}>초기화</Text>
           </Pressable>
@@ -274,6 +308,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94a3b8',
     flex: 1,
+  },
+  finishButton: {
+    backgroundColor: '#00e5ff',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  finishButtonText: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '700',
   },
   resetButton: {
     backgroundColor: '#1b243d',

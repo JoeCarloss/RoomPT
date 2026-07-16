@@ -61,6 +61,10 @@ export class SquatAnalyzer {
     this.count = 0;
   }
 
+  getCount(): number {
+    return this.count;
+  }
+
   analyze(landmarks: Landmark[]): SquatAnalysis {
     const nose = landmarks[KnownPoseLandmarks.nose];
     const leftShoulder = landmarks[KnownPoseLandmarks.leftShoulder];
