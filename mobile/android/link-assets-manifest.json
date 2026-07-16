@@ -1,0 +1,9 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/models/pose_landmarker_lite.task",
+      "sha1": "350021196fa52ef20ab2153f1a5b0e712cadcd67"
+    }
+  ]
+}
