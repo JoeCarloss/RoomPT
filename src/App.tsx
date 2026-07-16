@@ -339,7 +339,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-height-screen p-4 md:p-8 flex flex-col max-w-7xl mx-auto">
+    <div className="min-h-screen p-4 md:p-8 flex flex-col max-w-7xl mx-auto">
       {/* Header */}
       <header className="flex justify-between items-center mb-8 pb-4 border-b border-gray-800">
         <div className="flex items-center gap-3">
