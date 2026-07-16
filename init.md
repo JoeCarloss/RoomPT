@@ -2,7 +2,9 @@
 
 1. 프로젝트 개요 (Project Overview)
 
-스마트폰 카메라와 다중모달(Multimodal) LLM을 활용하여 집에서도 전문적인 PT(Personal Training)를 받는 듯한 경험을 제공하는 실시간 대화형 AI 피트니스 코치 앱입니다. 복잡한 환경 변수를 배제하고 스쿼트(Squat)와 런지(Lunge) 등 직관적인 맨몸 운동에 집중하여 자세 교정의 정확도와 실시간 음성 피드백의 품질을 극대화합니다.
+스마트폰 카메라만으로 집에서도 전문적인 PT(Personal Training)를 받는 듯한 경험을 제공하는 실시간 AI 피트니스 코치 앱입니다. 복잡한 환경 변수를 배제하고 스쿼트(Squat) 등 직관적인 맨몸 운동에 집중하여 자세 교정의 정확도와 실시간 음성 피드백의 품질을 극대화합니다.
+
+**서버 없이 클라이언트(모바일 앱)만으로 동작합니다.** 자세 추적, 자세 판별, 음성 안내까지 전부 기기 안에서(온디바이스) 처리하며, 어떤 개인 영상 데이터도 외부로 전송되지 않습니다.
 
 2. 앱 네이밍 후보군 (Naming Candidates)
 
@@ -18,78 +20,93 @@
 
 A. 실시간 자세 추적 (Real-time Pose Estimation)
 
-스마트폰 카메라로 사용자의 움직임을 초당 30프레임 이상 스캔.
+스마트폰 카메라로 사용자의 움직임을 실시간 스캔.
 
-주요 관절(어깨, 엉덩이, 무릎, 발목 등)의 좌표와 각도를 실시간 추출.
+주요 관절(어깨, 엉덩이, 무릎, 발목, 코 등 33개 포인트)의 좌표를 온디바이스 ML 모델(MediaPipe Pose Landmarker)로 실시간 추출.
 
 정확한 횟수 카운팅 및 가동 범위(ROM) 측정.
 
-B. VLM 기반 시공간적 피드백 (Spatio-temporal Feedback)
+B. 룰 기반 자세 피드백 (Rule-based Form Feedback)
 
-단순 "각도 이탈 경고"가 아닌, 전체 동작의 흐름(Sequence)을 파악.
+관절 좌표 간의 각도·비율을 계산해 자세 오류를 규칙 기반으로 판별.
 
-예: "무릎이 안으로 모이고 있어요. 발끝 방향으로 무릎을 열어주세요."
+현재 감지 가능한 항목:
+- 무릎 모임(Knee Collapse) — 무릎 간격이 발목 간격 대비 좁아지는지
+- 상체 전방 숙임 — 엉덩이 각도가 과도하게 작아지는지
+- 좌우 골반 기울어짐 — 양쪽 엉덩이 높이 차이
+- 고개 처짐 — 코와 어깨 라인의 상대 위치
+- 스탠스(발 너비) 적정성 — 발목 너비 대 어깨 너비 비율
 
-C. 실시간 양방향 음성 코치 (Conversational Voice Coaching)
+카메라가 실제 거리(cm)를 알 수 없으므로(깊이 센서 미사용) 모든 임계값은 몸의 다른 부위 대비 "비율"로 판단하며, 실기기 테스트를 통해 지속적으로 튜닝합니다.
 
-운동 중 사용자의 음성 발화("나 무릎 아파", "너무 힘들어")를 인식.
+카메라 방향에 따른 한계를 명확히 안내: 정면 촬영 시 모든 피드백 항목이 동작하고, 측면 촬영 시 일부(무릎 모임 등 좌우 비교가 필요한 항목)는 비활성화됩니다. 무릎이 발끝보다 나가는지, 발뒤꿈치가 뜨는지는 카메라가 바라보는 방향을 알 수 없어 의도적으로 구현하지 않음(잘못 판단하면 오히려 틀린 코칭을 주기 때문).
 
-LLM이 실시간으로 맥락을 파악하여 텍스트 생성 후 TTS(Text-to-Speech)로 음성 안내.
+C. 음성 피드백 (On-device Voice Feedback)
 
-운동 세트 간 휴식 시간에 동기부여 멘트 제공.
+자세 문제가 감지되면 정해진 안내 문구를 온디바이스 TTS(Text-to-Speech)로 즉시 음성 안내 (예: "무릎이 안으로 모이고 있습니다. 발끝 방향으로 넓혀주세요").
+
+스쿼트 1회 완료 시마다 카운트를 음성으로 안내 ("1회!", "2회!" ...).
+
+※ 사용자 음성 인식(STT)이나 자연어 대화형 코칭은 아직 없음 — 아래 "향후 확장" 참고.
+
+D. 설치 가이드 (Setup Guide)
+
+앱 첫 실행 시 카메라 거리(2~3m)·방향(정면 권장)·높이(허리~가슴, 수직 거치)·조명·복장을 안내하는 온보딩 화면 제공.
 
 4. 시스템 아키텍처 및 데이터 플로우 (Architecture)
 
-Client (Mobile): 영상 캡처 ➡️ Edge AI 모델 구동 ➡️ 관절 3D 좌표 추출
+서버가 없는 완전 클라이언트 구조입니다.
 
-Network (WebSocket): 영상 원본이 아닌 '좌표 데이터'와 '음성 텍스트'만 서버로 전송 (대역폭 및 레이턴시 최소화)
+Client (Mobile App): 카메라 프레임 캡처 → 온디바이스 MediaPipe Pose Landmarker로 관절 좌표 추출 → 룰 기반 분석 엔진이 매 프레임 자세 판별 → 문제 발견 시 온디바이스 TTS로 즉시 음성 출력
 
-Backend Server: 실시간 좌표 시퀀스 분석 및 상태 관리
-
-AI Engine: 좌표 메타데이터 + 사용자 음성 ➡️ 다중모달 LLM 프롬프트 주입 ➡️ 자연어 피드백 생성
-
-Response: 생성된 텍스트 ➡️ TTS 변환 ➡️ Client로 전송 후 음성 출력
+영상, 좌표, 음성 그 어떤 데이터도 네트워크로 전송되지 않음 (모델 파일 다운로드는 최초 앱 빌드에 번들링되어 있어 런타임 네트워크 요청 없음)
 
 5. 기술 스택 (Tech Stack)
 
 Frontend (Client)
 
-Framework: React Native 또는 Flutter (크로스 플랫폼 지원 및 네이티브 카메라 제어 용이)
+Framework: React Native (bare CLI, Expo 미사용) — 안드로이드/iOS 네이티브 앱
 
-Edge AI: Google MediaPipe (BlazePose) - 가볍고 빠르며 모바일 환경에 최적화됨.
+Camera: react-native-vision-camera (v4.7.3 고정 — v5의 Nitro Modules 아키텍처는 현재 쓰는 커뮤니티 프레임 프로세서 플러그인들과 호환 안 됨)
 
-Backend (Server)
+Pose Detection: react-native-mediapipe (MediaPipe Tasks Pose Landmarker, BlazePose 33포인트, pose_landmarker_lite.task 모델을 앱에 번들링)
 
-Framework: Node.js (Express/NestJS) 또는 Spring Boot
+TTS: react-native-tts (온디바이스 시스템 음성 엔진, 한국어)
 
-Communication: WebSocket / WebRTC (실시간 양방향 통신)
+오버레이 렌더링: react-native-svg (스켈레톤/관절 시각화, 설치 가이드 다이어그램)
 
-Database: PostgreSQL (유저 및 운동 기록) + Redis (실시간 프레임 세션 관리)
+Backend: 없음
 
-AI & LLM
+Database: 없음 (운동 기록 저장 기능은 아직 없음, 필요 시 온디바이스 로컬 저장소로 추가 예정)
 
-Prototype/Cloud API: OpenAI GPT-4o / Anthropic Claude 3.5 Sonnet (초기 로직 검증용)
+AI & LLM: 현재 미사용. 클라우드 API 키를 클라이언트에 노출하는 문제, 서버 없는 구조라는 제약 때문에 1차 버전은 룰 기반으로만 구현하고, LLM 기반 자연어 피드백/대화형 코칭은 추후 검토 (온디바이스 LLM: Chrome 계열 Gemini Nano, WebLLM 등 / 또는 사용자가 자신의 API 키를 직접 입력하는 방식 등을 후보로 고려 중이며 아직 결정된 바 없음).
 
-Local Inference (Option): Mac Mini M4 Pro 환경을 활용한 로컬 Llama 3 (8B) + vLLM/Ollama (비용 절감 및 레이턴시 테스트)
-
-TTS/STT: OpenAI Whisper(STT) / ElevenLabs 또는 Google Cloud TTS(TTS)
+참고: 프로젝트 루트의 웹 버전(Vite+React, `src/`)은 초기 PoC로 남겨두었고, 실제 개발은 `mobile/` 디렉토리의 React Native 앱에서 진행 중.
 
 6. Phase 별 개발 마일스톤 (Development Milestones)
 
-Phase 1: 핵심 기능 검증 (PoC)
+Phase 1: 핵심 기능 구현 — 완료 ✅
 
-MediaPipe 연동 및 스쿼트 랜드마크 추출 확인.
+MediaPipe Pose Landmarker 온디바이스 연동, 카메라 프레임 실시간 분석.
 
-하드코딩된 룰 기반(Rule-based)으로 자세 오류 판별 및 콘솔 출력.
+룰 기반 스쿼트 판별(횟수 카운팅, 무릎 모임/상체 숙임/골반 기울기/고개 처짐/스탠스 폭 감지) 및 TTS 음성 피드백까지 구현.
 
-Phase 2: LLM 파이프라인 통합
+카메라 설치 가이드(온보딩) 화면 추가.
 
-추출된 좌표 데이터를 텍스트 프롬프트로 변환하여 LLM에 전달.
+미검증 사항: 실기기/에뮬레이터가 없는 개발 환경 특성상 타입체크·린트까지만 확인했고, 실제 기기에서의 인식 정확도·임계값 튜닝은 진행 필요.
 
-LLM이 생성한 피드백을 TTS로 변환하여 모바일 기기에서 재생 (레이턴시 최적화).
+Phase 2: 자세 판정 정확도 고도화 (진행 중)
 
-Phase 3: 대화형 UI 및 앱 고도화
+실기기 테스트를 통한 각 임계값(각도, 비율) 보정.
 
-운동 기록 UI, 캘린더, 사용자 대시보드 추가.
+운동 종류 확장 검토 (런지 등).
 
-STT를 적용하여 사용자의 음성 피드백을 반영하는 양방향 소통 구현.
+Phase 3: LLM 기반 자연어 피드백 (보류)
+
+서버 없는 구조를 유지하면서 LLM을 도입할 방법(온디바이스 LLM 또는 사용자 API 키 입력) 결정 필요.
+
+결정되면 룰 기반 판별 결과를 LLM에 입력해 더 자연스러운 문장으로 변환, STT로 사용자 발화("무릎 아파요" 등)에 반응하는 대화형 코칭 검토.
+
+Phase 4: 대화형 UI 및 앱 고도화 (보류)
+
+운동 기록 UI, 캘린더, 사용자 대시보드 — 온디바이스 로컬 저장소 기반으로 검토.

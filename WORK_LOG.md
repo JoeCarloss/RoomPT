@@ -51,4 +51,10 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 
 - 사용자가 Android Studio에서 빌드 시 `Could not find method jcenter()` 에러 보고. 원인은 `react-native-tts@4.1.1` 패키지 자체의 `android/build.gradle`에 남아있던 2017년식 `buildscript { repositories { jcenter() } }` 블록 — JCenter는 2021년에 서비스 종료됐고 최신 Gradle엔 `jcenter()` 메서드 자체가 없음. 이 블록은 오토링킹되는 최신 RN 환경에서 애초에 불필요(루트 프로젝트가 이미 AGP를 적용함)해서 통째로 제거.
 - `node_modules`는 재설치 시 사라지므로 `patch-package`로 영구 패치 (`patches/react-native-tts+4.1.1.patch`) + `package.json`에 `postinstall: patch-package` 추가. 패치 생성 중 Android Studio가 `node_modules/react-native-tts/android/.gradle/`에 남긴 빌드 캐시 파일들이 diff에 잘못 끼어들어서, 캐시 디렉토리 삭제 후 재생성해 순수 코드 diff만 남김.
+- `git remote add origin` (SSH — `gh` HTTPS 토큰이 만료돼 있어서 SSH로 전환) 후 `github.com/JoeCarloss/RoomPT`로 첫 푸시 완료. 원격이 비어있어 충돌 없음.
+
+## 2026-07-17 [Claude] — init.md를 현재 아키텍처에 맞게 재작성
+
+- 원본 init.md는 서버(Node.js/Spring Boot) + WebSocket + PostgreSQL/Redis + 클라우드 LLM(GPT-4o/Claude) 기반 기획이었는데, 실제로는 서버 없음/LLM 없음/React Native bare CLI로 완전히 다른 방향으로 가 있어서 문서가 실제 상태와 크게 어긋나 있었음.
+- 아키텍처, 기술 스택, 핵심 기능(룰 기반 피드백 항목 구체적으로 명시), 마일스톤 섹션을 현재 구현 상태에 맞게 전면 재작성. LLM/대화형 코칭/운동 기록은 "보류" 단계로 명시하고 왜 보류 중인지(서버 없는 구조에서 API 키 노출 문제 등) 이유를 남겨둠. 웹 PoC와 mobile/ RN 앱이 둘 다 저장소에 있다는 사실도 문서에 명시.
 
