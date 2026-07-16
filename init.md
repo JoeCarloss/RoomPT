@@ -110,3 +110,31 @@ Phase 3: LLM 기반 자연어 피드백 (보류)
 Phase 4: 대화형 UI 및 앱 고도화 (보류)
 
 운동 기록 UI, 캘린더, 사용자 대시보드 — 온디바이스 로컬 저장소 기반으로 검토.
+
+7. 여러 기기에서 개발 환경 설정 (Multi-machine Dev Setup)
+
+이 프로젝트는 여러 PC에서 나눠서 개발합니다. 저장소: `git@github.com:JoeCarloss/RoomPT.git` (SSH). 새 기기에서 처음 셋업할 때:
+
+공통
+
+- `git clone git@github.com:JoeCarloss/RoomPT.git` (HTTPS 대신 SSH 권장 — HTTPS는 `gh` 토큰 만료 등으로 인증이 끊기기 쉬움. 새 기기에 SSH 키 등록 필요: `ssh-keygen` → GitHub 계정에 공개키 등록 → `ssh -T git@github.com`으로 확인)
+- Node.js 22.11.0 이상 필요 (`mobile/package.json`의 `engines` 참고)
+- `cd mobile && npm install` — `postinstall` 스크립트가 `patch-package`를 자동 실행해서 `react-native-tts`의 낡은 gradle 설정을 자동으로 고쳐줌 (수동 작업 불필요)
+- pose_landmarker_lite.task 모델 파일은 이미 저장소에 커밋되어 있어(`mobile/assets/models/`, 그리고 iOS/Android 네이티브 프로젝트에 링크된 사본) 별도 다운로드 불필요
+
+Android
+
+- Android Studio + Android SDK (minSdk 24 / compileSdk 36 / targetSdk 36)
+- **JDK 17 필요.** 시스템 기본 `java`가 구버전(예: 1.7)일 수 있으니 Android Studio에 내장된 JBR 또는 별도 설치한 JDK 17(예: Amazon Corretto)을 Gradle이 쓰도록 설정. `mobile/android/gradle/gradle-daemon-jvm.properties`에 Gradle 데몬용 툴체인 버전(21)이 명시되어 있어 Gradle이 자동으로 맞는 JDK를 다운로드/사용하려 시도함.
+- `npm run android` 또는 Android Studio에서 `mobile/android` 열어서 실행
+
+iOS (macOS + Xcode 필요)
+
+- Xcode, CocoaPods 설치 필요
+- `cd mobile/ios && bundle install && pod install` (최초 1회, 또는 네이티브 의존성 추가/변경 후)
+- `npm run ios` 또는 Xcode에서 `mobile/ios/RoomPTMobile.xcworkspace` 열어서 실행 (`.xcodeproj` 아님, 반드시 `.xcworkspace`)
+
+협업 규칙
+
+- 커밋 메시지 앞에 `[Claude]` / `[Antigravity]` 접두사로 작업 주체 표시, `WORK_LOG.md`에 "왜" 이 변경을 했는지 짧게 기록 — 여러 기기/여러 도구가 같은 저장소를 건드리므로 `git log`만으로 맥락 파악 가능하게 유지.
+- 다른 기기에서 작업 시작 전 `git pull`로 먼저 최신 상태 받아오기.

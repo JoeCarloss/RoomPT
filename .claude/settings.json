@@ -3,7 +3,8 @@
     "allow": [
       "Bash(ssh -T git@github.com)",
       "Bash(git push *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

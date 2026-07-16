@@ -57,4 +57,5 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 
 - 원본 init.md는 서버(Node.js/Spring Boot) + WebSocket + PostgreSQL/Redis + 클라우드 LLM(GPT-4o/Claude) 기반 기획이었는데, 실제로는 서버 없음/LLM 없음/React Native bare CLI로 완전히 다른 방향으로 가 있어서 문서가 실제 상태와 크게 어긋나 있었음.
 - 아키텍처, 기술 스택, 핵심 기능(룰 기반 피드백 항목 구체적으로 명시), 마일스톤 섹션을 현재 구현 상태에 맞게 전면 재작성. LLM/대화형 코칭/운동 기록은 "보류" 단계로 명시하고 왜 보류 중인지(서버 없는 구조에서 API 키 노출 문제 등) 이유를 남겨둠. 웹 PoC와 mobile/ RN 앱이 둘 다 저장소에 있다는 사실도 문서에 명시.
+- 사용자가 다른 PC에서도 같은 구조로 작업할 예정이라고 해서 init.md에 "여러 기기에서 개발 환경 설정" 섹션 추가 (클론 방법, JDK 17 필요성, `npm install` 시 postinstall이 patch-package 자동 실행한다는 점, iOS는 `.xcworkspace`로 열어야 한다는 점 등 이번 세션에서 실제로 겪은 함정들 위주로 기록).
 
