@@ -4,15 +4,23 @@
  * @format
  */
 
+import { useState } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CameraScreen } from './src/screens/CameraScreen';
+import { SetupGuideScreen } from './src/screens/SetupGuideScreen';
 
 function App() {
+  const [showGuide, setShowGuide] = useState(true);
+
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
-      <CameraScreen />
+      {showGuide ? (
+        <SetupGuideScreen onStart={() => setShowGuide(false)} />
+      ) : (
+        <CameraScreen onShowGuide={() => setShowGuide(true)} />
+      )}
     </SafeAreaProvider>
   );
 }

@@ -27,7 +27,11 @@ const INITIAL_ANALYSIS: SquatAnalysis = {
   repCompleted: false,
 };
 
-export function CameraScreen() {
+interface CameraScreenProps {
+  onShowGuide: () => void;
+}
+
+export function CameraScreen({ onShowGuide }: CameraScreenProps) {
   const camPermission = useCameraPermission();
   const insets = useSafeAreaInsets();
   const [hasCamPermission, setHasCamPermission] = useState(camPermission.hasPermission);
@@ -147,9 +151,14 @@ export function CameraScreen() {
         >
           <Text style={styles.stateBadgeText}>SQUAT : {analysis.state}</Text>
         </View>
-        <Pressable style={styles.flipButton} onPress={flipCamera}>
-          <Text style={styles.flipButtonText}>카메라 전환</Text>
-        </Pressable>
+        <View style={styles.topBarButtons}>
+          <Pressable style={styles.flipButton} onPress={onShowGuide}>
+            <Text style={styles.flipButtonText}>?</Text>
+          </Pressable>
+          <Pressable style={styles.flipButton} onPress={flipCamera}>
+            <Text style={styles.flipButtonText}>카메라 전환</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.bottomPanel, { paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20 }]}>
@@ -226,6 +235,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1,
     color: '#000',
+  },
+  topBarButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   flipButton: {
     backgroundColor: 'rgba(0,0,0,0.5)',
