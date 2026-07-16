@@ -47,3 +47,8 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - **골반 기울임 오경고 방지**: 3/4 뷰나 측면 뷰에서 엉덩이 너비(`hipWidth`)가 perspective compression에 의해 급격히 작아져 엉덩이가 비뚤어지지 않았는데도 경고가 울리는 버그 차단. 골반 너비가 어깨 너비의 60% 이상인 정면 구도(`hipWidth > shoulderWidth * 0.6`)일 때만 기울임 상태를 검출하도록 가드 조건 삽입.
 - **설치 가이드 SVG 텍스트 배치 개선**: `SetupGuideScreen.tsx` 다이어그램에서 휴대폰 및 인물의 가로축 좌표(`phoneX = 60`, `personX = 270`)를 우측으로 시프트해 화면 왼쪽 경계에서 글자가 잘려 나오는 현상 방지. 또한 SVG `<Text>` 내에서 `\n` 문자가 동작하지 않아 뭉개지던 "허리\n높이" 라벨을 2개의 개별 `<SvgText>` 태그로 분리 배치하여 선명하게 줄바꿈 출력 완료.
 
+## 2026-07-17 [Claude] — Android 빌드 에러 수정 (react-native-tts jcenter)
+
+- 사용자가 Android Studio에서 빌드 시 `Could not find method jcenter()` 에러 보고. 원인은 `react-native-tts@4.1.1` 패키지 자체의 `android/build.gradle`에 남아있던 2017년식 `buildscript { repositories { jcenter() } }` 블록 — JCenter는 2021년에 서비스 종료됐고 최신 Gradle엔 `jcenter()` 메서드 자체가 없음. 이 블록은 오토링킹되는 최신 RN 환경에서 애초에 불필요(루트 프로젝트가 이미 AGP를 적용함)해서 통째로 제거.
+- `node_modules`는 재설치 시 사라지므로 `patch-package`로 영구 패치 (`patches/react-native-tts+4.1.1.patch`) + `package.json`에 `postinstall: patch-package` 추가. 패치 생성 중 Android Studio가 `node_modules/react-native-tts/android/.gradle/`에 남긴 빌드 캐시 파일들이 diff에 잘못 끼어들어서, 캐시 디렉토리 삭제 후 재생성해 순수 코드 diff만 남김.
+
