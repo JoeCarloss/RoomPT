@@ -217,6 +217,20 @@ export class SquatAnalyzer {
     const isHipTilted =
       isFrontView &&
       Math.abs(leftHip.y - rightHip.y) > hipWidth * 0.35;
+    // 중심축(양 발목 중점) 대비 몸통 좌우 쏠림 — 골반이 수평이어도 몸 전체가
+    // 한쪽 다리 위로 이동/기울어진 경우를 감지. 정면 뷰에서만 의미 있음.
+    const ankleMidX = (leftAnkle.x + rightAnkle.x) / 2;
+    const isBodyShiftedSideways =
+      isFrontView &&
+      Math.max(Math.abs(shoulderMid.x - ankleMidX), Math.abs(hipMid.x - ankleMidX)) >
+        shoulderWidth * 0.3;
+    // 좌우 무릎 굽힘 비대칭 — 한쪽 무릎만 더 깊게 굽혀지는 경우. 정면 뷰에서 실제로
+    // 앉는 중일 때만 판단(서 있을 때는 둘 다 ~180°라 무의미). 정면 투영 각도는 원근
+    // 때문에 노이즈가 커서 임계값을 25°로 넉넉하게 둠 — 실기기 튜닝 대상.
+    const isKneeBendAsymmetric =
+      isFrontView &&
+      targetKneeAngle < 150 &&
+      Math.abs(angles.leftKnee - angles.rightKnee) > 25;
     // 고개가 많이 처짐 (코가 어깨 라인보다 많이 아래 = 시선이 바닥을 향함)
     const shoulderMidY = (leftShoulder.y + rightShoulder.y) / 2;
     const hipMidY = (leftHip.y + rightHip.y) / 2;
@@ -284,6 +298,12 @@ export class SquatAnalyzer {
       } else if (isHipTilted) {
         state = 'WARNING';
         feedback = '주의: 몸이 한쪽으로 기울었습니다. 양쪽 다리에 체중을 균등하게 실어주세요.';
+      } else if (isBodyShiftedSideways) {
+        state = 'WARNING';
+        feedback = '주의: 몸이 중심에서 한쪽으로 쏠렸습니다. 체중을 양발 가운데로 옮겨주세요.';
+      } else if (isKneeBendAsymmetric) {
+        state = 'WARNING';
+        feedback = '주의: 한쪽 무릎만 더 굽혀지고 있습니다. 양쪽 무릎을 같은 깊이로 굽혀주세요.';
       } else if (isHeadDroppingDown) {
         state = 'WARNING';
         feedback = '고개를 들고 정면을 바라보세요.';
