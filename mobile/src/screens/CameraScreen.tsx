@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View, PermissionsAndroid } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AppState, Platform, Pressable, StyleSheet, Text, View, PermissionsAndroid } from 'react-native';
 import {
   MediapipeCamera,
   RunningMode,
@@ -12,7 +12,7 @@ import { useCameraPermission, type CameraPosition } from 'react-native-vision-ca
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PoseOverlay, type OverlayPoint } from '../components/PoseOverlay';
 import { SquatAnalyzer, type SquatAnalysis } from '../squat/squatAnalyzer';
-import { speak } from '../services/tts';
+import { speak, stopSpeaking } from '../services/tts';
 import { saveRecord } from '../services/workoutStorage';
 
 // react-native-asset links assets/models/* into android/app/src/main/assets/custom/
@@ -26,6 +26,7 @@ const INITIAL_ANALYSIS: SquatAnalysis = {
   feedback: '카메라 앞에 서서 스쿼트 동작을 시작하세요.',
   count: 0,
   repCompleted: false,
+  tracking: false,
 };
 
 interface CameraScreenProps {
@@ -51,6 +52,22 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const savingRef = useRef(false);
   const frameCounterRef = useRef(0);
 
+  // 잠금·백그라운드 전환 시 카메라(언마운트)와 TTS를 즉시 정지 — 화면이 꺼진 뒤에도
+  // 프레임 분석과 음성 안내가 계속 도는 문제 방지. 카운트 등은 ref에 있어 복귀 후 유지됨.
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const appActiveRef = useRef(appActive);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      const active = nextState === 'active';
+      appActiveRef.current = active;
+      setAppActive(active);
+      if (!active) {
+        stopSpeaking();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   const requestPermission = useCallback(async () => {
     if (Platform.OS === 'android') {
       try {
@@ -68,6 +85,10 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
 
   const onResults = useCallback(
     (result: PoseDetectionResultBundle, vc: ViewCoordinator) => {
+      // 언마운트 직전에 도착한 마지막 프레임들이 백그라운드에서 처리되지 않게 가드
+      if (!appActiveRef.current) {
+        return;
+      }
       const poseLandmarks = result.results[0]?.landmarks[0];
       if (!poseLandmarks || poseLandmarks.length === 0) {
         setOverlayPoints(null);
@@ -190,26 +211,32 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
         })
       }
     >
-      <MediapipeCamera
-        style={StyleSheet.absoluteFill}
-        solution={poseDetection}
-        activeCamera={activeCamera}
-        resizeMode="cover"
-      />
+      {appActive && (
+        <MediapipeCamera
+          style={StyleSheet.absoluteFill}
+          solution={poseDetection}
+          activeCamera={activeCamera}
+          resizeMode="cover"
+        />
+      )}
       <PoseOverlay landmarks={overlayPoints} width={viewSize.width} height={viewSize.height} />
 
       <View style={[styles.topBar, { top: insets.top > 0 ? insets.top + 8 : 16 }]}>
         <View
           style={[
             styles.stateBadge,
-            analysis.state === 'WARNING'
-              ? styles.stateBadgeWarning
-              : analysis.state === 'DOWN'
-                ? styles.stateBadgeDown
-                : styles.stateBadgeUp,
+            !analysis.tracking
+              ? styles.stateBadgeSearching
+              : analysis.state === 'WARNING'
+                ? styles.stateBadgeWarning
+                : analysis.state === 'DOWN'
+                  ? styles.stateBadgeDown
+                  : styles.stateBadgeUp,
           ]}
         >
-          <Text style={styles.stateBadgeText}>SQUAT : {analysis.state}</Text>
+          <Text style={[styles.stateBadgeText, !analysis.tracking && styles.stateBadgeTextSearching]}>
+            {analysis.tracking ? `SQUAT : ${analysis.state}` : '전신 인식 중...'}
+          </Text>
         </View>
         <View style={styles.topBarButtons}>
           <Pressable style={styles.flipButton} onPress={onShowGuide}>
@@ -296,11 +323,15 @@ const styles = StyleSheet.create({
   stateBadgeUp: { backgroundColor: '#39ff14' },
   stateBadgeDown: { backgroundColor: '#00e5ff' },
   stateBadgeWarning: { backgroundColor: '#ff2a6d' },
+  stateBadgeSearching: { backgroundColor: '#1b243d' },
   stateBadgeText: {
     fontWeight: '800',
     fontSize: 12,
     letterSpacing: 1,
     color: '#000',
+  },
+  stateBadgeTextSearching: {
+    color: '#94a3b8',
   },
   topBarButtons: {
     flexDirection: 'row',

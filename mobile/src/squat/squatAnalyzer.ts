@@ -15,6 +15,8 @@ export interface SquatAnalysis {
   feedback: string;
   count: number;
   repCompleted: boolean;
+  /** 전신(어깨+엉덩이+한쪽 다리 이상)이 안정적으로 인식돼 코칭이 동작 중인지 */
+  tracking: boolean;
 }
 
 const VISIBILITY_THRESHOLD = 0.5;
@@ -22,6 +24,15 @@ const VISIBILITY_THRESHOLD = 0.5;
 // 생기는 단발성 쓰레기 랜드마크가 DOWN→UP 사이클로 오인돼 카운트가 올라가는 것을 방지.
 // ~30fps 기준 3프레임 ≈ 0.1초라 실제 스쿼트 동작 인식에는 체감 지연 없음.
 const STATE_DEBOUNCE_FRAMES = 3;
+// 전신 인식 게이트: 어깨·엉덩이·한쪽 다리 이상이 이 프레임 수만큼 연속으로 잡혀야
+// 코칭(카운트/자세 경고)을 시작. 몸 일부만 잡힌 상태에서 자세 교정이 나가는 것 방지.
+const READY_FRAMES = 10;
+// 전신 인식이 이 프레임 수만큼 연속으로 끊기면 다시 인식 대기 상태로 복귀
+const LOST_FRAMES = 5;
+// 흔들림(지터) 게이트: 프레임 간 몸 중심점 이동이 이 값(정규화 좌표)을 넘으면 기기가
+// 흔들리거나 인식이 튄 것으로 보고 해당 프레임의 상태 전환을 무시. 실제 스쿼트의
+// 프레임당 이동(~0.01)보다 훨씬 크게 잡아 정상 동작엔 걸리지 않음.
+const JITTER_THRESHOLD = 0.05;
 
 function calculateAngle(p1: Landmark, p2: Landmark, p3: Landmark): number {
   const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
@@ -61,12 +72,22 @@ export class SquatAnalyzer {
   private count = 0;
   private downStreak = 0;
   private upStreak = 0;
+  private isTracking = false;
+  private readyStreak = 0;
+  private lostStreak = 0;
+  private prevHipMid: { x: number; y: number } | null = null;
+  private prevShoulderMid: { x: number; y: number } | null = null;
 
   reset(): void {
     this.poseState = 'UP';
     this.count = 0;
     this.downStreak = 0;
     this.upStreak = 0;
+    this.isTracking = false;
+    this.readyStreak = 0;
+    this.lostStreak = 0;
+    this.prevHipMid = null;
+    this.prevShoulderMid = null;
   }
 
   getCount(): number {
@@ -99,17 +120,65 @@ export class SquatAnalyzer {
       (rightKnee.visibility ?? 1) > VISIBILITY_THRESHOLD &&
       (rightAnkle.visibility ?? 1) > VISIBILITY_THRESHOLD;
 
-    // 양쪽 다리 모두 신뢰할 수 없는 프레임(가림, 프레임 밖, 인식 실패)에서는 상태 머신을
-    // 아예 돌리지 않고 현재 상태를 유지 — 쓰레기 각도로 카운트/경고가 발동하는 것 방지
-    if (!leftLegVisible && !rightLegVisible) {
+    // ---- 전신 인식 게이트 + 흔들림(지터) 게이트 ----
+    const shouldersVisible =
+      (leftShoulder.visibility ?? 1) > VISIBILITY_THRESHOLD &&
+      (rightShoulder.visibility ?? 1) > VISIBILITY_THRESHOLD;
+    const hipsVisible =
+      (leftHip.visibility ?? 1) > VISIBILITY_THRESHOLD &&
+      (rightHip.visibility ?? 1) > VISIBILITY_THRESHOLD;
+    // 측면 촬영 시 먼 쪽 다리는 가시성이 낮을 수 있으므로 "한쪽 다리 이상"을 요구
+    const fullBodyVisible = shouldersVisible && hipsVisible && (leftLegVisible || rightLegVisible);
+
+    // 프레임 간 몸 중심점(어깨/엉덩이 중점) 이동량 — 기기 흔들림·인식 튐 감지
+    const hipMid = { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2 };
+    const shoulderMid = {
+      x: (leftShoulder.x + rightShoulder.x) / 2,
+      y: (leftShoulder.y + rightShoulder.y) / 2,
+    };
+    let unstable = false;
+    if (this.prevHipMid && this.prevShoulderMid) {
+      const hipMove = Math.hypot(hipMid.x - this.prevHipMid.x, hipMid.y - this.prevHipMid.y);
+      const shoulderMove = Math.hypot(
+        shoulderMid.x - this.prevShoulderMid.x,
+        shoulderMid.y - this.prevShoulderMid.y,
+      );
+      unstable = Math.max(hipMove, shoulderMove) > JITTER_THRESHOLD;
+    }
+    this.prevHipMid = hipMid;
+    this.prevShoulderMid = shoulderMid;
+
+    if (fullBodyVisible && !unstable) {
+      this.readyStreak += 1;
+      this.lostStreak = 0;
+    } else {
+      this.readyStreak = 0;
+      this.lostStreak += 1;
+    }
+    if (!this.isTracking && this.readyStreak >= READY_FRAMES) {
+      this.isTracking = true;
+    } else if (this.isTracking && this.lostStreak >= LOST_FRAMES) {
+      this.isTracking = false;
       this.downStreak = 0;
       this.upStreak = 0;
+    }
+
+    // 전신이 안정적으로 잡히기 전(또는 흔들리는 프레임)에는 상태 머신·자세 경고를
+    // 아예 돌리지 않음 — 몸 일부만 잡힌 상태의 쓰레기 각도로 카운트/경고 발동 방지
+    if (!this.isTracking || unstable || !fullBodyVisible) {
+      if (unstable) {
+        this.downStreak = 0;
+        this.upStreak = 0;
+      }
       return {
         angles,
         state: this.poseState,
-        feedback: '전신이 카메라에 보이도록 서주세요.',
+        feedback: this.isTracking
+          ? '카메라를 고정해주세요.'
+          : '전신이 카메라에 보이도록 서주세요.',
         count: this.count,
         repCompleted: false,
+        tracking: this.isTracking,
       };
     }
 
@@ -227,6 +296,6 @@ export class SquatAnalyzer {
       }
     }
 
-    return { angles, state, feedback, count: this.count, repCompleted };
+    return { angles, state, feedback, count: this.count, repCompleted, tracking: true };
   }
 }

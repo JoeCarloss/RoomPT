@@ -51,3 +51,12 @@ export async function speak(text: string, force = false): Promise<void> {
     console.warn('[TTS Error]', error);
   }
 }
+
+/** 진행 중/대기 중인 발화를 즉시 중단 (앱이 백그라운드·잠금으로 전환될 때 호출) */
+export async function stopSpeaking(): Promise<void> {
+  try {
+    await Tts.stop();
+  } catch (error) {
+    console.warn('[TTS Error]', error);
+  }
+}
