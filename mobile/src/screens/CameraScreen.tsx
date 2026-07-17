@@ -170,8 +170,14 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       firstRepAtRef.current === null || lastRepAtRef.current === null
         ? 0
         : Math.round((lastRepAtRef.current - firstRepAtRef.current) / 1000);
+    const repSnapshots = analyzerRef.current.getRepSnapshots();
     savingRef.current = true;
-    saveRecord({ endedAt: new Date().toISOString(), reps, durationSec })
+    saveRecord({
+      endedAt: new Date().toISOString(),
+      reps,
+      durationSec,
+      repSnapshots: repSnapshots.length > 0 ? repSnapshots : undefined,
+    })
       .then(() => {
         speak(`운동 완료! ${reps}회 기록했습니다.`, true);
         reset();

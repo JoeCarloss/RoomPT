@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { RepSnapshot } from '../squat/squatAnalyzer';
 
 /** 저장되는 운동 기록 1건. 전부 온디바이스(AsyncStorage)에만 저장된다. */
 export interface WorkoutRecord {
@@ -9,6 +10,8 @@ export interface WorkoutRecord {
   reps: number;
   /** 첫 1회 완료부터 마지막 회 완료까지 걸린 시간 (초). 1회만 수행 시 0. */
   durationSec: number;
+  /** 렙별 최저점 자세 스냅샷 — 자세 일관성 분석용 (구버전 기록엔 없음) */
+  repSnapshots?: RepSnapshot[];
 }
 
 function isValidRecord(value: unknown): value is WorkoutRecord {

@@ -9,6 +9,17 @@ export interface JointAngles {
 
 export type SquatState = 'UP' | 'DOWN' | 'WARNING';
 
+/** 렙 1회의 최저점(가장 깊이 앉은 순간) 자세 스냅샷 — 렙 간 자세 일관성 분석용 */
+export interface RepSnapshot {
+  rep: number;
+  /** 최저점 무릎 각도(도). 작을수록 깊이 앉은 것 */
+  minKneeAngle: number;
+  /** 최저점에서의 엉덩이(고관절) 각도 */
+  hipAngleAtBottom: number;
+  /** 엉덩이 중점을 원점, 몸통 길이를 1로 정규화한 33개 랜드마크 — 위치·거리 무관 비교용 */
+  landmarks: { x: number; y: number }[];
+}
+
 export interface SquatAnalysis {
   angles: JointAngles;
   state: SquatState;
@@ -77,6 +88,12 @@ export class SquatAnalyzer {
   private lostStreak = 0;
   private prevHipMid: { x: number; y: number } | null = null;
   private prevShoulderMid: { x: number; y: number } | null = null;
+  private repSnapshots: RepSnapshot[] = [];
+  private bottomCandidate: {
+    kneeAngle: number;
+    hipAngle: number;
+    landmarks: { x: number; y: number }[];
+  } | null = null;
 
   reset(): void {
     this.poseState = 'UP';
@@ -88,10 +105,16 @@ export class SquatAnalyzer {
     this.lostStreak = 0;
     this.prevHipMid = null;
     this.prevShoulderMid = null;
+    this.repSnapshots = [];
+    this.bottomCandidate = null;
   }
 
   getCount(): number {
     return this.count;
+  }
+
+  getRepSnapshots(): RepSnapshot[] {
+    return this.repSnapshots;
   }
 
   analyze(landmarks: Landmark[]): SquatAnalysis {
@@ -192,6 +215,25 @@ export class SquatAnalyzer {
       targetHipAngle = angles.rightHip;
     }
 
+    // 이번 프레임이 현재 렙에서 가장 깊은 지점이면 스켈레톤 스냅샷 후보 갱신.
+    // 엉덩이 중점을 원점으로, 몸통 길이를 1로 정규화해 위치·거리와 무관하게
+    // 렙끼리 자세 모양을 비교할 수 있게 저장한다. 렙 완료 시 확정 후 초기화.
+    if (
+      targetKneeAngle < 130 &&
+      targetKneeAngle < (this.bottomCandidate?.kneeAngle ?? Infinity)
+    ) {
+      const torso =
+        Math.hypot(shoulderMid.x - hipMid.x, shoulderMid.y - hipMid.y) || 0.0001;
+      this.bottomCandidate = {
+        kneeAngle: targetKneeAngle,
+        hipAngle: targetHipAngle,
+        landmarks: landmarks.map((lm) => ({
+          x: Math.round(((lm.x - hipMid.x) / torso) * 1000) / 1000,
+          y: Math.round(((lm.y - hipMid.y) / torso) * 1000) / 1000,
+        })),
+      };
+    }
+
     const kneeWidth = Math.abs(leftKnee.x - rightKnee.x);
     const ankleWidth = Math.abs(leftAnkle.x - rightAnkle.x);
     const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x) || 0.0001;
@@ -273,6 +315,16 @@ export class SquatAnalyzer {
         this.count += 1;
         repCompleted = true;
         feedback = '좋습니다! 다음 횟수를 위해 천천히 내려가세요.';
+        // 이번 렙의 최저점 스냅샷 확정
+        if (this.bottomCandidate) {
+          this.repSnapshots.push({
+            rep: this.count,
+            minKneeAngle: Math.round(this.bottomCandidate.kneeAngle),
+            hipAngleAtBottom: Math.round(this.bottomCandidate.hipAngle),
+            landmarks: this.bottomCandidate.landmarks,
+          });
+          this.bottomCandidate = null;
+        }
       } else if (this.poseState === 'DOWN') {
         // 전환 확정 대기 중 (디바운스)
         feedback = '천천히 엉덩이를 뒤로 밀어 일어나세요.';
