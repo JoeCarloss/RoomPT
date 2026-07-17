@@ -18,6 +18,10 @@ export interface SquatAnalysis {
 }
 
 const VISIBILITY_THRESHOLD = 0.5;
+// 상태(UP/DOWN) 전환에 필요한 최소 연속 프레임 수. 화면 회전·가림·스쳐 지나감 등으로
+// 생기는 단발성 쓰레기 랜드마크가 DOWN→UP 사이클로 오인돼 카운트가 올라가는 것을 방지.
+// ~30fps 기준 3프레임 ≈ 0.1초라 실제 스쿼트 동작 인식에는 체감 지연 없음.
+const STATE_DEBOUNCE_FRAMES = 3;
 
 function calculateAngle(p1: Landmark, p2: Landmark, p3: Landmark): number {
   const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
@@ -55,10 +59,14 @@ function calculateAngle(p1: Landmark, p2: Landmark, p3: Landmark): number {
 export class SquatAnalyzer {
   private poseState: 'UP' | 'DOWN' = 'UP';
   private count = 0;
+  private downStreak = 0;
+  private upStreak = 0;
 
   reset(): void {
     this.poseState = 'UP';
     this.count = 0;
+    this.downStreak = 0;
+    this.upStreak = 0;
   }
 
   getCount(): number {
@@ -90,6 +98,20 @@ export class SquatAnalyzer {
     const rightLegVisible =
       (rightKnee.visibility ?? 1) > VISIBILITY_THRESHOLD &&
       (rightAnkle.visibility ?? 1) > VISIBILITY_THRESHOLD;
+
+    // 양쪽 다리 모두 신뢰할 수 없는 프레임(가림, 프레임 밖, 인식 실패)에서는 상태 머신을
+    // 아예 돌리지 않고 현재 상태를 유지 — 쓰레기 각도로 카운트/경고가 발동하는 것 방지
+    if (!leftLegVisible && !rightLegVisible) {
+      this.downStreak = 0;
+      this.upStreak = 0;
+      return {
+        angles,
+        state: this.poseState,
+        feedback: '전신이 카메라에 보이도록 서주세요.',
+        count: this.count,
+        repCompleted: false,
+      };
+    }
 
     let targetKneeAngle = (angles.leftKnee + angles.rightKnee) / 2;
     let targetHipAngle = (angles.leftHip + angles.rightHip) / 2;
@@ -148,22 +170,36 @@ export class SquatAnalyzer {
     if (isKneeCollapsing) {
       state = 'WARNING';
       feedback = '주의: 무릎이 안으로 모이고 있습니다. 발끝 방향으로 무릎을 넓혀주세요!';
+      this.downStreak = 0;
+      this.upStreak = 0;
     } else if (targetKneeAngle < 95) {
+      // 연속 N프레임 유지될 때만 실제 상태 전환 — 단발 노이즈 프레임은 무시
+      this.downStreak += 1;
+      this.upStreak = 0;
+      if (this.downStreak >= STATE_DEBOUNCE_FRAMES) {
+        this.poseState = 'DOWN';
+      }
       state = 'DOWN';
-      this.poseState = 'DOWN';
       feedback = '완전히 내려왔습니다. 천천히 무릎과 엉덩이를 펴며 일어서세요.';
     } else if (targetKneeAngle > 155) {
+      this.upStreak += 1;
+      this.downStreak = 0;
       state = 'UP';
-      if (this.poseState === 'DOWN') {
+      if (this.poseState === 'DOWN' && this.upStreak >= STATE_DEBOUNCE_FRAMES) {
         this.poseState = 'UP';
         this.count += 1;
         repCompleted = true;
         feedback = '좋습니다! 다음 횟수를 위해 천천히 내려가세요.';
+      } else if (this.poseState === 'DOWN') {
+        // 전환 확정 대기 중 (디바운스)
+        feedback = '천천히 엉덩이를 뒤로 밀어 일어나세요.';
       } else {
         feedback = '몸을 곧게 펴고 스쿼트를 준비하세요.';
       }
     } else {
       state = this.poseState;
+      this.downStreak = 0;
+      this.upStreak = 0;
       feedback =
         this.poseState === 'DOWN'
           ? '천천히 엉덩이를 뒤로 밀어 일어나세요.'

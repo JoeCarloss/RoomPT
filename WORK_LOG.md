@@ -76,6 +76,14 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - **검증**: 3개 패키지를 node_modules에서 삭제 후 `npm install`로 신규 설치 시뮬레이션 — postinstall이 패치 4개 전부 정상 적용, 16KB 플래그·tasks-vision 0.10.35 반영 확인. tsc/eslint 통과.
 - **플래그만 (무해해서 유지)**: 앱 `build.gradle`의 `-DANDROID_ALIGN_16KB=ON`/`APP_ALIGN_16KB=true`는 실존하지 않는 NDK 변수명(실제는 `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES`)이고 앱 모듈 externalNativeBuild 인자는 라이브러리 모듈에 전파되지 않아 완전 무효 — 실제 16KB 정렬은 CMakeLists 패치가 수행. WORK_LOG에 기록된 `extractNativeLibs="false"` 매니페스트 적용은 실제 매니페스트에 없음(`useLegacyPackaging=false`가 동일 효과라 결과는 무방). 수동 `zipalign -p 16384`+재서명 절차는 이제 불필요할 것으로 보이나 실기기 확인 필요.
 
+## 2026-07-17 [Claude] — 실기기 테스트 피드백 반영: 회전 오카운트 + 화면 꺼짐 수정
+
+- **실기기 버그 리포트**: (1) 폰을 세로→가로로 돌리면 스쿼트 카운트가 1씩 올라감, (2) 운동 중 터치가 없어 화면이 절전으로 꺼짐.
+- **회전 오카운트 원인**: 관절 각도 자체는 회전 불변이지만, 회전 "중" 프리뷰 리사이즈/재인식 과정에서 나오는 단발성 쓰레기 랜드마크가 무릎 각도를 순간 <95°→>155°로 튀게 해 1회로 카운트됨. 이중 수정: ① AndroidManifest에 `android:screenOrientation="portrait"` 추가로 회전 자체를 차단 (iPhone은 Info.plist가 이미 세로 고정, iPad만 회전 허용 상태로 둠), ② `squatAnalyzer`에 상태 전환 디바운스 추가 — UP/DOWN 전환은 해당 각도가 3프레임 연속 유지될 때만 확정(~0.1초라 실제 동작 인식엔 체감 없음). 회전 외에도 가림/스쳐 지나감 노이즈 오카운트까지 방어.
+- **가시성 게이트 추가**: 양쪽 다리 모두 가시성이 낮은 프레임에서는 상태 머신을 아예 돌리지 않고 현재 상태 유지 + "전신이 카메라에 보이도록 서주세요" 안내. 인식 실패 프레임의 쓰레기 각도로 카운트/경고가 발동하는 것 차단.
+- **화면 꺼짐**: 라이브러리 추가 없이 네이티브 플래그로 해결 — Android `MainActivity.onCreate`에 `FLAG_KEEP_SCREEN_ON`(백그라운드 전환 시 자동 무효화라 배터리 무해), iOS `AppDelegate`에 `isIdleTimerDisabled = true`. 이 앱은 사실상 카메라 화면이 전부라 앱 전역 적용이 적절하다고 판단.
+- 네이티브(Kotlin/Swift/Manifest) 변경이라 tsc/eslint 무관 — 다음 빌드에서 확인 필요. JS 변경(squatAnalyzer)은 tsc/eslint 통과.
+
 ## 2026-07-17 [Claude] — 운동 기록 저장 기능 추가 (온디바이스, AsyncStorage)
 
 - `@react-native-async-storage/async-storage` 도입 — 서버 없는 구조 유지, 기록은 기기 안에만 저장. `workoutStorage.ts` 서비스 신설 (저장/조회/개별·전체 삭제, 손상된 JSON은 빈 목록으로 폴백).

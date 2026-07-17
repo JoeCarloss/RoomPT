@@ -29,6 +29,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       launchOptions: launchOptions
     )
 
+    // 운동 중 터치가 없어도 화면이 꺼지지 않도록 시스템 절전 타이머 비활성화
+    application.isIdleTimerDisabled = true
+
     return true
   }
 }
