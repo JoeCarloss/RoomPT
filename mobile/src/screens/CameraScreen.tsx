@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View, PermissionsAndroid } from 'react-native';
 import {
   MediapipeCamera,
   RunningMode,
@@ -51,8 +51,19 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const savingRef = useRef(false);
   const frameCounterRef = useRef(0);
 
-  const requestPermission = useCallback(() => {
-    camPermission.requestPermission().then(setHasCamPermission);
+  const requestPermission = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA
+        );
+        setHasCamPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
+      } catch (err) {
+        console.warn(err);
+      }
+    } else {
+      camPermission.requestPermission().then(setHasCamPermission);
+    }
   }, [camPermission]);
 
   const onResults = useCallback(
