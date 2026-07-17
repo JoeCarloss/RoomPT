@@ -68,6 +68,14 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - **바벨 빌드 의존성 보강 (500 에러 해결)**: `react-native-mediapipe` 및 `react-native-vision-camera` 등 서드파티 모듈 트랜스파일 시 필요한 바벨 필수 플러그인들(`@babel/plugin-proposal-optional-chaining`, `@babel/plugin-proposal-nullish-coalescing-operator`, `@babel/plugin-proposal-class-properties`)과 `@babel/preset-typescript` 프리셋을 프로젝트 개발 의존성(`devDependencies`)에 추가하여 Metro 번들러의 500 에러를 해결했습니다.
 - **안드로이드 권한 허용 크래시 우회**: 안드로이드 15 / New Architecture 환경에서 카메라 권한 요청 시 발생하는 `NO_ACTIVITY` 라이브러리 버그를 방어하기 위해 `react-native-vision-camera` 자체 권한 팝업을 거치지 않고, 리액트 네이티브 표준 API인 `PermissionsAndroid`를 사용하도록 `CameraScreen.tsx` 코드를 개선했습니다.
 
+## 2026-07-17 [Claude] — Antigravity 16KB 빌드 수정 비판적 검토: 패치 오염·설치 깨짐 수정
+
+- **핵심 수정 자체는 타당함을 확인**: 3개 라이브러리 CMakeLists의 `-Wl,-z,max-page-size=16384` 링커 플래그, `tasks-vision` 0.10.2→0.10.35 업그레이드, `useLegacyPackaging=false`, `PermissionsAndroid` 권한 우회 — 모두 검토 결과 올바른 접근.
+- **🔴 patch-package 패치 오염 수정 (다른 PC에서 `npm install` 깨지는 문제)**: 패치 3개(vision-camera 2.0MB / worklets-core 1.8MB / mediapipe 229KB)에 `android/build/`·`.cxx/` 빌드 산출물 2,000여 파일이 raw 바이너리째 포함돼 있었음. 이 디렉토리들은 npm 패키지에 존재하지 않으므로 새 기기에서 postinstall의 patch-package가 적용 실패 → `npm install` 자체가 실패. 7-17 오전 tts 패치 때 겪은 것과 같은 함정(당시엔 `.gradle`만, 이번엔 `build/`·`.cxx/` 유입). node_modules에서 해당 디렉토리 삭제 후 재생성 → 각 631B~1.3KB로 축소, 실제 소스 변경 4건만 남김.
+- **🔴 미사용 babel 의존성 4종 제거 (`npm install` ERESOLVE 실패 유발)**: `@babel/preset-typescript@8.0.1`은 Babel 8용이라 `@babel/core@7`과 peer 충돌 — 일반 `npm install`이 아예 실패함(Antigravity는 `--legacy-peer-deps`류로 설치한 것으로 추정). 게다가 4종 모두 `babel.config.js`에서 참조되지 않아 실효과 없음(RN 프리셋이 TS·optional chaining·class properties를 이미 처리). "Metro 500 에러"는 캐시/재시작 등 다른 요인으로 해소됐을 가능성이 높음 — 재발 시 babel.config.js에 Babel 7용 패키지로 추가하는 게 올바른 경로.
+- **검증**: 3개 패키지를 node_modules에서 삭제 후 `npm install`로 신규 설치 시뮬레이션 — postinstall이 패치 4개 전부 정상 적용, 16KB 플래그·tasks-vision 0.10.35 반영 확인. tsc/eslint 통과.
+- **플래그만 (무해해서 유지)**: 앱 `build.gradle`의 `-DANDROID_ALIGN_16KB=ON`/`APP_ALIGN_16KB=true`는 실존하지 않는 NDK 변수명(실제는 `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES`)이고 앱 모듈 externalNativeBuild 인자는 라이브러리 모듈에 전파되지 않아 완전 무효 — 실제 16KB 정렬은 CMakeLists 패치가 수행. WORK_LOG에 기록된 `extractNativeLibs="false"` 매니페스트 적용은 실제 매니페스트에 없음(`useLegacyPackaging=false`가 동일 효과라 결과는 무방). 수동 `zipalign -p 16384`+재서명 절차는 이제 불필요할 것으로 보이나 실기기 확인 필요.
+
 ## 2026-07-17 [Claude] — 운동 기록 저장 기능 추가 (온디바이스, AsyncStorage)
 
 - `@react-native-async-storage/async-storage` 도입 — 서버 없는 구조 유지, 기록은 기기 안에만 저장. `workoutStorage.ts` 서비스 신설 (저장/조회/개별·전체 삭제, 손상된 JSON은 빈 목록으로 폴백).
