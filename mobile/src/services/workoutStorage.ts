@@ -7,8 +7,21 @@ export interface WorkoutRecord {
   endedAt: string;
   /** 완료한 스쿼트 횟수 */
   reps: number;
-  /** 첫 1회 완료부터 저장까지 걸린 시간 (초). 첫 회 전에 저장되면 0. */
+  /** 첫 1회 완료부터 마지막 회 완료까지 걸린 시간 (초). 1회만 수행 시 0. */
   durationSec: number;
+}
+
+function isValidRecord(value: unknown): value is WorkoutRecord {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.endedAt === 'string' &&
+    typeof r.reps === 'number' &&
+    typeof r.durationSec === 'number'
+  );
 }
 
 const STORAGE_KEY = '@roompt/workout_records';
@@ -20,7 +33,8 @@ async function readAll(): Promise<WorkoutRecord[]> {
   }
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    // 형태가 깨진 항목은 걸러냄 — 손상 항목이 UI 렌더링/통계 계산에 흘러들지 않게
+    return Array.isArray(parsed) ? parsed.filter(isValidRecord) : [];
   } catch {
     // 손상된 데이터는 복구 불가 — 빈 목록으로 취급 (다음 저장 시 덮어써짐)
     return [];

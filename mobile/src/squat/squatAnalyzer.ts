@@ -128,10 +128,15 @@ export class SquatAnalyzer {
       Math.abs(leftHip.y - rightHip.y) > hipWidth * 0.35;
     // 고개가 많이 처짐 (코가 어깨 라인보다 많이 아래 = 시선이 바닥을 향함)
     const shoulderMidY = (leftShoulder.y + rightShoulder.y) / 2;
-    // 정면 뷰일 때는 어깨 폭 대비 비율로, 측면 뷰일 때는 고정 임계치(0.06) 기준으로 고개 처짐 판단
+    const hipMidY = (leftHip.y + rightHip.y) / 2;
+    // 몸통 세로 길이 — 정규화 좌표는 카메라 거리에 따라 줄어들므로, 고정 임계값 대신
+    // 몸의 다른 부위 대비 비율로 판단하기 위한 기준 (측면 뷰에서도 압축되지 않는 세로 지표)
+    const torsoLen = Math.abs(hipMidY - shoulderMidY) || 0.0001;
+    // 정면 뷰는 어깨 폭 대비, 측면 뷰는 어깨 폭이 압축되므로 몸통 길이 대비 비율로 판단.
+    // (이전의 고정 임계치 0.06은 사용자가 멀리 설수록 정상 자세에서도 오경고 — 거리 의존적이라 교체)
     const isHeadDroppingDown = isFrontView
       ? (shoulderMidY - nose.y) < shoulderWidth * 0.25
-      : (shoulderMidY - nose.y) < 0.06;
+      : (shoulderMidY - nose.y) < torsoLen * 0.15;
     // 스탠스(발 너비)가 어깨너비 대비 너무 좁거나 넓음 — 정면 뷰이고 서 있을 때만 의미 있는 지표
     const isStanceTooNarrow = isFrontView && ankleWidth < shoulderWidth * 0.6;
     const isStanceTooWide = isFrontView && ankleWidth > shoulderWidth * 1.8;

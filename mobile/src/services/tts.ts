@@ -1,6 +1,10 @@
 import Tts from 'react-native-tts';
 
 const COOLDOWN_MS = 3000;
+// 서로 다른 경고 문구가 임계값 경계에서 프레임 단위로 번갈아 나올 때
+// (speak()는 WARNING 동안 매 프레임 호출됨) Tts.speak() 큐에 무한정 쌓이는
+// 것을 막는 전역 최소 간격. 다른 문구는 3초를 다 기다리지 않고 이 간격만 지나면 발화된다.
+const MIN_GAP_MS = 2000;
 
 let lastSpokenAt = 0;
 let lastSpokenText = '';
@@ -25,9 +29,15 @@ export async function speak(text: string, force = false): Promise<void> {
     await ensureInit();
 
     const now = Date.now();
-    // 동일한 메시지인 경우에만 3초 쿨다운 적용. 메시지가 다르면 즉시 출력
-    if (!force && text === lastSpokenText && now - lastSpokenAt < COOLDOWN_MS) {
-      return;
+    if (!force) {
+      // 동일한 메시지는 3초 쿨다운
+      if (text === lastSpokenText && now - lastSpokenAt < COOLDOWN_MS) {
+        return;
+      }
+      // 다른 메시지라도 전역 최소 간격(2초)은 지켜서 큐 폭주 방지
+      if (now - lastSpokenAt < MIN_GAP_MS) {
+        return;
+      }
     }
 
     if (force) {

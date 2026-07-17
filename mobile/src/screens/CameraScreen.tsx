@@ -43,8 +43,12 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const [analysis, setAnalysis] = useState<SquatAnalysis>(INITIAL_ANALYSIS);
 
   const analyzerRef = useRef(new SquatAnalyzer());
-  // 첫 1회 완료 시각 — 운동 시간(durationSec) 계산 기준. 초기화/저장 시 리셋.
+  // 운동 시간(durationSec) = 첫 1회 완료 ~ 마지막 회 완료. 저장 버튼 누르는 시각 기준으로
+  // 재면 마지막 스쿼트 후 쉰 시간까지 부풀려지므로 마지막 회 완료 시각을 따로 기록한다.
   const firstRepAtRef = useRef<number | null>(null);
+  const lastRepAtRef = useRef<number | null>(null);
+  // 완료 버튼 더블탭으로 같은 세션이 중복 저장되는 것 방지
+  const savingRef = useRef(false);
   const frameCounterRef = useRef(0);
 
   const requestPermission = useCallback(() => {
@@ -92,9 +96,11 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       if (next.state === 'WARNING') {
         speak(next.feedback);
       } else if (next.repCompleted) {
+        const now = Date.now();
         if (firstRepAtRef.current === null) {
-          firstRepAtRef.current = Date.now();
+          firstRepAtRef.current = now;
         }
+        lastRepAtRef.current = now;
         speak(`${next.count}회!`, true);
       }
     },
@@ -115,19 +121,24 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const reset = useCallback(() => {
     analyzerRef.current.reset();
     firstRepAtRef.current = null;
+    lastRepAtRef.current = null;
     setAnalysis(INITIAL_ANALYSIS);
   }, []);
 
   const finishWorkout = useCallback(() => {
+    if (savingRef.current) {
+      return;
+    }
     const reps = analyzerRef.current.getCount();
     if (reps === 0) {
       Alert.alert('저장할 기록 없음', '스쿼트를 1회 이상 완료한 뒤 저장할 수 있습니다.');
       return;
     }
     const durationSec =
-      firstRepAtRef.current === null
+      firstRepAtRef.current === null || lastRepAtRef.current === null
         ? 0
-        : Math.round((Date.now() - firstRepAtRef.current) / 1000);
+        : Math.round((lastRepAtRef.current - firstRepAtRef.current) / 1000);
+    savingRef.current = true;
     saveRecord({ endedAt: new Date().toISOString(), reps, durationSec })
       .then(() => {
         speak(`운동 완료! ${reps}회 기록했습니다.`, true);
@@ -135,6 +146,9 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       })
       .catch(() => {
         Alert.alert('저장 실패', '기록을 저장하지 못했습니다. 다시 시도해주세요.');
+      })
+      .finally(() => {
+        savingRef.current = false;
       });
   }, [reset]);
 
