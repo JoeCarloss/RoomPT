@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Platform, Pressable, StyleSheet, Text, View, PermissionsAndroid } from 'react-native';
+import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, Text, View, PermissionsAndroid } from 'react-native';
 import {
   MediapipeCamera,
   RunningMode,
@@ -75,6 +75,18 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
           PermissionsAndroid.PERMISSIONS.CAMERA
         );
         setHasCamPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
+        // "다시 묻지 않음"으로 거부되면 request가 다이얼로그 없이 즉시 never_ask_again을
+        // 반환해 버튼이 먹통이 됨 — 시스템 설정으로 안내해 막다른 상태 탈출
+        if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+          Alert.alert(
+            '카메라 권한 필요',
+            '설정에서 카메라 권한을 직접 허용해주세요.',
+            [
+              { text: '취소', style: 'cancel' },
+              { text: '설정 열기', onPress: () => Linking.openSettings() },
+            ],
+          );
+        }
       } catch (err) {
         console.warn(err);
       }
