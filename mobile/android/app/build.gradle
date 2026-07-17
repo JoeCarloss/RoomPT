@@ -84,6 +84,16 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+
+        // 16KB 페이지 크기 지원을 위한 NDK/CMake 컴파일 및 링크 설정
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_ALIGN_16KB=ON"
+            }
+            ndkBuild {
+                arguments "APP_ALIGN_16KB=true"
+            }
+        }
     }
     signingConfigs {
         debug {
@@ -103,6 +113,11 @@ android {
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
