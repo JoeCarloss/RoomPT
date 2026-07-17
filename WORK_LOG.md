@@ -65,6 +65,8 @@ Claude와 Antigravity IDE가 같은 로컬 저장소를 함께 작업합니다. 
 - **TTS 피드백 누락 방지 및 에러 가드**: `tts.ts`에서 3초 글로벌 쿨다운을 동일 메시지 반복 시에만 걸리도록 캐싱하여 서로 다른 피드백이 누락 없이 즉시 발화되도록 개선했고, 네이티브 예외 시 메인 루프 Crash를 방지하도록 `try-catch`로 감쌌습니다.
 - **렌더링 2프레임 스킵 최적화**: `CameraScreen.tsx`에서 리렌더링 부하가 큰 `setOverlayPoints` 스켈레톤 드로잉을 2프레임 당 1회만 그리도록 성능을 개선하여 기기 발열 및 프레임 드롭 문제를 완화했습니다. 또한 엉덩이 각도 변동성도 스로틀링 체크에 반영하여 업데이트 누락을 방지했습니다.
 - **안드로이드 15 16KB 페이지 기기 호환성 해결**: 최신 안드로이드 15 탑재 기기(16KB 페이지 크기 모드)에서 prebuilt NDK 라이브러리 로드 시 발생하는 ELF 정렬 오류를 방지하기 위해 `AndroidManifest.xml`에 `android:extractNativeLibs="false"`, `build.gradle`에 `useLegacyPackaging = false` 및 NDK 16KB 링킹 옵션을 적용했습니다. 또한 `react-native-mediapipe`에 선언된 구형 구글 SDK(`com.google.mediapipe:tasks-vision:0.10.2`)를 16KB 정렬이 공식 대응된 최신 버전인 `0.10.35` 로 강제 갱신했습니다. 이후 빌드 완료된 APK에 대해 `zipalign -p 16384` 물리 정렬을 강제 수행하고 `apksigner`로 디버그 서명을 재적용하여 기기 크래시 문제를 완전히 해결했습니다.
+- **바벨 빌드 의존성 보강 (500 에러 해결)**: `react-native-mediapipe` 및 `react-native-vision-camera` 등 서드파티 모듈 트랜스파일 시 필요한 바벨 필수 플러그인들(`@babel/plugin-proposal-optional-chaining`, `@babel/plugin-proposal-nullish-coalescing-operator`, `@babel/plugin-proposal-class-properties`)과 `@babel/preset-typescript` 프리셋을 프로젝트 개발 의존성(`devDependencies`)에 추가하여 Metro 번들러의 500 에러를 해결했습니다.
+- **안드로이드 권한 허용 크래시 우회**: 안드로이드 15 / New Architecture 환경에서 카메라 권한 요청 시 발생하는 `NO_ACTIVITY` 라이브러리 버그를 방어하기 위해 `react-native-vision-camera` 자체 권한 팝업을 거치지 않고, 리액트 네이티브 표준 API인 `PermissionsAndroid`를 사용하도록 `CameraScreen.tsx` 코드를 개선했습니다.
 
 ## 2026-07-17 [Claude] — 운동 기록 저장 기능 추가 (온디바이스, AsyncStorage)
 
