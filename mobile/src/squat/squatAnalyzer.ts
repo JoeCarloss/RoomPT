@@ -28,6 +28,8 @@ export interface SquatAnalysis {
   repCompleted: boolean;
   /** 전신(어깨+엉덩이+한쪽 다리 이상)이 안정적으로 인식돼 코칭이 동작 중인지 */
   tracking: boolean;
+  /** 전신 인식 대기 진행률(0~1). 실루엣 캘리브레이션 UI의 진행 링에 사용. tracking이면 1 */
+  readyProgress: number;
 }
 
 const VISIBILITY_THRESHOLD = 0.5;
@@ -193,15 +195,25 @@ export class SquatAnalyzer {
         this.downStreak = 0;
         this.upStreak = 0;
       }
+      // 어느 부위가 안 보이는지에 따라 구체적 안내 — 캘리브레이션을 반응형으로
+      let feedback: string;
+      if (unstable) {
+        feedback = '카메라를 고정해주세요.';
+      } else if (!shouldersVisible) {
+        feedback = '상체가 화면에 들어오도록 서주세요.';
+      } else if (!hipsVisible || (!leftLegVisible && !rightLegVisible)) {
+        feedback = '뒤로 물러나 발끝까지 화면에 담아주세요.';
+      } else {
+        feedback = '좋아요, 그대로 잠시 유지하세요.';
+      }
       return {
         angles,
         state: this.poseState,
-        feedback: this.isTracking
-          ? '카메라를 고정해주세요.'
-          : '전신이 카메라에 보이도록 서주세요.',
+        feedback,
         count: this.count,
         repCompleted: false,
         tracking: this.isTracking,
+        readyProgress: Math.min(1, this.readyStreak / READY_FRAMES),
       };
     }
 
@@ -368,6 +380,6 @@ export class SquatAnalyzer {
       }
     }
 
-    return { angles, state, feedback, count: this.count, repCompleted, tracking: true };
+    return { angles, state, feedback, count: this.count, repCompleted, tracking: true, readyProgress: 1 };
   }
 }

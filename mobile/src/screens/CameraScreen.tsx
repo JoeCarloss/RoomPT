@@ -11,7 +11,9 @@ import {
 import { useCameraPermission, type CameraPosition } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PoseOverlay, type OverlayPoint } from '../components/PoseOverlay';
+import { CalibrationOverlay } from '../components/CalibrationOverlay';
 import { SquatAnalyzer, type SquatAnalysis } from '../squat/squatAnalyzer';
+import { LandmarkFilter } from '../pose/oneEuroFilter';
 import { speak, stopSpeaking } from '../services/tts';
 import { saveRecord } from '../services/workoutStorage';
 
@@ -27,6 +29,7 @@ const INITIAL_ANALYSIS: SquatAnalysis = {
   count: 0,
   repCompleted: false,
   tracking: false,
+  readyProgress: 0,
 };
 
 interface CameraScreenProps {
@@ -44,6 +47,8 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const [analysis, setAnalysis] = useState<SquatAnalysis>(INITIAL_ANALYSIS);
 
   const analyzerRef = useRef(new SquatAnalyzer());
+  // 랜드마크 지터를 1€ 필터로 스무딩 — 분석·오버레이 공통 소스에 적용
+  const landmarkFilterRef = useRef(new LandmarkFilter());
   // 운동 시간(durationSec) = 첫 1회 완료 ~ 마지막 회 완료. 저장 버튼 누르는 시각 기준으로
   // 재면 마지막 스쿼트 후 쉰 시간까지 부풀려지므로 마지막 회 완료 시각을 따로 기록한다.
   const firstRepAtRef = useRef<number | null>(null);
@@ -63,6 +68,8 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       setAppActive(active);
       if (!active) {
         stopSpeaking();
+        // 복귀 시 큰 시간 공백으로 필터가 튀지 않게 리셋
+        landmarkFilterRef.current.reset();
       }
     });
     return () => sub.remove();
@@ -101,11 +108,16 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       if (!appActiveRef.current) {
         return;
       }
-      const poseLandmarks = result.results[0]?.landmarks[0];
-      if (!poseLandmarks || poseLandmarks.length === 0) {
+      const rawLandmarks = result.results[0]?.landmarks[0];
+      if (!rawLandmarks || rawLandmarks.length === 0) {
+        // 인식 끊김 — 필터를 리셋해 재획득 시 이전 좌표에서 끌려오지 않게
+        landmarkFilterRef.current.reset();
         setOverlayPoints(null);
         return;
       }
+
+      // 1€ 필터로 지터 스무딩 후 분석·오버레이 모두 이 좌표를 사용
+      const poseLandmarks = landmarkFilterRef.current.filter(rawLandmarks, Date.now() / 1000);
 
       // 2프레임당 1회만 화면 스켈레톤 라인(overlayPoints) 업데이트를 수행하여 UI 렌더링 부하 완화
       frameCounterRef.current += 1;
@@ -127,6 +139,9 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
           prev.count === next.count &&
           prev.state === next.state &&
           prev.feedback === next.feedback &&
+          prev.tracking === next.tracking &&
+          // 캘리브레이션 진행 링이 스로틀에 막혀 멈추지 않도록 진행률 변화도 반영
+          prev.readyProgress === next.readyProgress &&
           Math.abs(prev.angles.leftKnee - next.angles.leftKnee) < 2.0 &&
           Math.abs(prev.angles.rightKnee - next.angles.rightKnee) < 2.0 &&
           Math.abs(prev.angles.leftHip - next.angles.leftHip) < 3.0 &&
@@ -164,6 +179,7 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
 
   const reset = useCallback(() => {
     analyzerRef.current.reset();
+    landmarkFilterRef.current.reset();
     firstRepAtRef.current = null;
     lastRepAtRef.current = null;
     setAnalysis(INITIAL_ANALYSIS);
@@ -238,6 +254,15 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
         />
       )}
       <PoseOverlay landmarks={overlayPoints} width={viewSize.width} height={viewSize.height} />
+
+      {!analysis.tracking && (
+        <CalibrationOverlay
+          width={viewSize.width}
+          height={viewSize.height}
+          progress={analysis.readyProgress}
+          hint={analysis.feedback}
+        />
+      )}
 
       <View style={[styles.topBar, { top: insets.top > 0 ? insets.top + 8 : 16 }]}>
         <View
