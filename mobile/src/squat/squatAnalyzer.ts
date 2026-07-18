@@ -175,12 +175,13 @@ export class SquatAnalyzer {
   private hasStood = false;
   private debugFrame = 0;
 
-  private logDebug(fields: Record<string, unknown>): void {
+  private logDebug(fields: Record<string, unknown>, force = false): void {
     if (!DEBUG_LOG) {
       return;
     }
     this.debugFrame += 1;
-    if (this.debugFrame % DEBUG_EVERY_N_FRAMES !== 0) {
+    // force=true(렙 완료 등 순간 이벤트)면 throttle 무시하고 항상 기록
+    if (!force && this.debugFrame % DEBUG_EVERY_N_FRAMES !== 0) {
       return;
     }
     console.log('[squat]', JSON.stringify(fields));
@@ -393,11 +394,13 @@ export class SquatAnalyzer {
     // ---- 카운팅을 막지 않는 보조 안내용 체크 (아래에서 우선순위대로 덮어씀) ----
     // 상체가 과도하게 앞으로 숙여짐 (엉덩이 각도가 지나치게 작음)
     const isLeaningForward = targetKneeAngle < 140 && targetHipAngle < 50;
+    // shoulderWidth > 0.15 절대 가드 제거 — 권장 거리(2~3m)에서 어깨 폭이 정규화 0.15
+    // 밑으로 떨어져 정면인데도 측면 오판되던 문제(실기기 로그로 확인). 이제 다리 가시성 +
+    // 엉덩이/어깨 폭 비율로만 정면 판정.
     const isFrontView =
       leftLegVisible &&
       rightLegVisible &&
-      hipWidth > shoulderWidth * 0.6 &&
-      shoulderWidth > 0.15;
+      hipWidth > shoulderWidth * 0.6;
 
     // 몸이 좌우 한쪽으로 기울어짐 (양쪽 엉덩이 높이 차이가 엉덩이 폭 대비 큼)
     const isHipTilted =
@@ -544,19 +547,25 @@ export class SquatAnalyzer {
       }
     }
 
-    this.logDebug({
-      p: 'trk',
-      knee: Math.round(targetKneeAngle),
-      hip: Math.round(targetHipAngle),
-      pose: this.poseState,
-      stood: this.hasStood,
-      down: this.downStreak,
-      up: this.upStreak,
-      cnt: this.count,
-      st: state,
-      front: isFrontView,
-      rep: repCompleted,
-    });
+    this.logDebug(
+      {
+        p: 'trk',
+        knee: Math.round(targetKneeAngle),
+        pose: this.poseState,
+        stood: this.hasStood,
+        up: this.upStreak,
+        cnt: this.count,
+        st: state,
+        front: isFrontView,
+        rep: repCompleted,
+        sw: Math.round(shoulderWidth * 100),
+        hw: Math.round(hipWidth * 100),
+        hd: isHeadDroppingDown,
+        kc: isKneeCollapsing,
+        lf: isLeaningForward,
+      },
+      repCompleted,
+    );
     return { angles, state, feedback, count: this.count, repCompleted, tracking: true, readyProgress: 1 };
   }
 }
