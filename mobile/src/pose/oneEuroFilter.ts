@@ -52,10 +52,11 @@ class OneEuroFilter {
   }
 }
 
-// 1차 추정치 — minCutoff를 낮추면 더 부드럽지만 지연↑, beta를 높이면 빠른 동작의
-// 지연↓. 정규화 좌표(0~1) 기준이며 실기기에서 스켈레톤 부드러움 vs 반응성 보고 튜닝.
-const MIN_CUTOFF = 1.7;
-const BETA = 0.4;
+// 실기기 피드백(스켈레톤이 동작을 못 따라옴)에 따라 지연을 줄이는 방향으로 조정.
+// minCutoff를 높이면 스무딩↓·반응성↑(지연↓), beta를 높이면 빠른 동작의 지연↓.
+// 정규화 좌표(0~1) 기준. 아직 떨리면 minCutoff↓, 여전히 굼뜨면 minCutoff·beta↑.
+const MIN_CUTOFF = 3.0;
+const BETA = 0.7;
 const D_CUTOFF = 1.0;
 // dt가 비정상(첫 프레임, 앱 복귀 후 큰 공백)일 때 쓰는 기본 간격(초, ~30fps 가정)
 const DEFAULT_DT = 1 / 30;

@@ -55,7 +55,6 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
   const lastRepAtRef = useRef<number | null>(null);
   // 완료 버튼 더블탭으로 같은 세션이 중복 저장되는 것 방지
   const savingRef = useRef(false);
-  const frameCounterRef = useRef(0);
 
   // 잠금·백그라운드 전환 시 카메라(언마운트)와 TTS를 즉시 정지 — 화면이 꺼진 뒤에도
   // 프레임 분석과 음성 안내가 계속 도는 문제 방지. 카운트 등은 ref에 있어 복귀 후 유지됨.
@@ -119,17 +118,15 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       // 1€ 필터로 지터 스무딩 후 분석·오버레이 모두 이 좌표를 사용
       const poseLandmarks = landmarkFilterRef.current.filter(rawLandmarks, Date.now() / 1000);
 
-      // 2프레임당 1회만 화면 스켈레톤 라인(overlayPoints) 업데이트를 수행하여 UI 렌더링 부하 완화
-      frameCounterRef.current += 1;
-      if (frameCounterRef.current % 2 === 0) {
-        const frameDims = vc.getFrameDims(result);
-        setOverlayPoints(
-          poseLandmarks.map((lm) => ({
-            ...vc.convertPoint(frameDims, { x: lm.x, y: lm.y }),
-            visibility: lm.visibility,
-          })),
-        );
-      }
+      // 스켈레톤을 매 프레임 그려 동작을 지연 없이 따라가게 함(실기기 피드백: 2프레임
+      // 스킵 시 15fps로 렌더돼 앉는 동작을 못 따라옴). 발열/프레임드롭이 심하면 되돌릴 것.
+      const frameDims = vc.getFrameDims(result);
+      setOverlayPoints(
+        poseLandmarks.map((lm) => ({
+          ...vc.convertPoint(frameDims, { x: lm.x, y: lm.y }),
+          visibility: lm.visibility,
+        })),
+      );
 
       const next = analyzerRef.current.analyze(poseLandmarks);
       

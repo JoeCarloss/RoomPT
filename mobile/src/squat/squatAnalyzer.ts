@@ -165,6 +165,9 @@ export class SquatAnalyzer {
   private count = 0;
   private downStreak = 0;
   private upStreak = 0;
+  // 서 있는 상태를 한 번이라도 확인했는지 — 앉은 채로 시작해 처음 일어서는 동작을
+  // 스쿼트 1회로 오인하지 않도록, 이게 true가 된 뒤의 앉았다-서는 사이클만 카운트
+  private hasStood = false;
   private isTracking = false;
   private readyStreak = 0;
   private lostStreak = 0;
@@ -186,6 +189,7 @@ export class SquatAnalyzer {
     this.count = 0;
     this.downStreak = 0;
     this.upStreak = 0;
+    this.hasStood = false;
     this.isTracking = false;
     this.readyStreak = 0;
     this.lostStreak = 0;
@@ -393,9 +397,11 @@ export class SquatAnalyzer {
     const torsoLen = Math.abs(hipMidY - shoulderMidY) || 0.0001;
     // 정면 뷰는 어깨 폭 대비, 측면 뷰는 어깨 폭이 압축되므로 몸통 길이 대비 비율로 판단.
     // (이전의 고정 임계치 0.06은 사용자가 멀리 설수록 정상 자세에서도 오경고 — 거리 의존적이라 교체)
+    // 임계값을 낮춰 민감도 완화 — 정상 자세에서 상시 오경고 나던 문제 해결(실기기 피드백).
+    // 코가 어깨 라인에 아주 근접(고개를 심하게 숙임)할 때만 경고.
     const isHeadDroppingDown = isFrontView
-      ? (shoulderMidY - nose.y) < shoulderWidth * 0.25
-      : (shoulderMidY - nose.y) < torsoLen * 0.15;
+      ? (shoulderMidY - nose.y) < shoulderWidth * 0.1
+      : (shoulderMidY - nose.y) < torsoLen * 0.08;
     // 스탠스(발 너비)가 어깨너비 대비 너무 좁거나 넓음 — 정면 뷰이고 서 있을 때만 의미 있는 지표
     const isStanceTooNarrow = isFrontView && ankleWidth < shoulderWidth * 0.6;
     const isStanceTooWide = isFrontView && ankleWidth > shoulderWidth * 1.8;
@@ -420,7 +426,7 @@ export class SquatAnalyzer {
       feedback = '주의: 무릎이 안으로 모이고 있습니다. 발끝 방향으로 무릎을 넓혀주세요!';
       this.downStreak = 0;
       this.upStreak = 0;
-    } else if (targetKneeAngle < 95) {
+    } else if (targetKneeAngle < 105) {
       // 연속 N프레임 유지될 때만 실제 상태 전환 — 단발 노이즈 프레임은 무시
       this.downStreak += 1;
       this.upStreak = 0;
@@ -429,38 +435,48 @@ export class SquatAnalyzer {
       }
       state = 'DOWN';
       feedback = '완전히 내려왔습니다. 천천히 무릎과 엉덩이를 펴며 일어서세요.';
-    } else if (targetKneeAngle > 155) {
+    } else if (targetKneeAngle > 150) {
       this.upStreak += 1;
       this.downStreak = 0;
       state = 'UP';
       if (this.poseState === 'DOWN' && this.upStreak >= STATE_DEBOUNCE_FRAMES) {
         this.poseState = 'UP';
-        this.count += 1;
-        repCompleted = true;
-        feedback = '좋습니다! 다음 횟수를 위해 천천히 내려가세요.';
-        // 이번 렙의 최저점 스냅샷 확정 + 폼 점수 계산
-        if (this.bottomCandidate) {
-          const { score, issues } = computeRepScore(
-            this.bottomCandidate.kneeAngle,
-            this.currentRepFlags,
-          );
-          this.repSnapshots.push({
-            rep: this.count,
-            minKneeAngle: Math.round(this.bottomCandidate.kneeAngle),
-            hipAngleAtBottom: Math.round(this.bottomCandidate.hipAngle),
-            landmarks: this.bottomCandidate.landmarks,
-            score,
-            issues,
-          });
-          this.bottomCandidate = null;
+        // 진짜 스쿼트 사이클(서있다→앉았다→섬)만 카운트. 앉은 상태로 시작해 처음
+        // 일어서는 동작은 hasStood가 false라 카운트 안 됨 → "이동/기립 중 오카운트" 방지.
+        if (this.hasStood) {
+          this.count += 1;
+          repCompleted = true;
+          feedback = '좋습니다! 다음 횟수를 위해 천천히 내려가세요.';
+          // 이번 렙의 최저점 스냅샷 확정 + 폼 점수 계산
+          if (this.bottomCandidate) {
+            const { score, issues } = computeRepScore(
+              this.bottomCandidate.kneeAngle,
+              this.currentRepFlags,
+            );
+            this.repSnapshots.push({
+              rep: this.count,
+              minKneeAngle: Math.round(this.bottomCandidate.kneeAngle),
+              hipAngleAtBottom: Math.round(this.bottomCandidate.hipAngle),
+              landmarks: this.bottomCandidate.landmarks,
+              score,
+              issues,
+            });
+          }
+        } else {
+          feedback = '준비됐습니다. 천천히 앉아 스쿼트를 시작하세요.';
         }
-        // 다음 렙을 위해 문제 누적·스트릭 초기화
+        // 이제 서 있는 상태 확립 — 이후 앉았다 서는 사이클부터 카운트 대상
+        this.hasStood = true;
+        // 다음 렙을 위해 문제 누적·스트릭·스냅샷 초기화
+        this.bottomCandidate = null;
         this.currentRepFlags = emptyRepFlags();
         this.flagStreaks = emptyFlagStreaks();
       } else if (this.poseState === 'DOWN') {
         // 전환 확정 대기 중 (디바운스)
         feedback = '천천히 엉덩이를 뒤로 밀어 일어나세요.';
       } else {
+        // 안정적으로 서 있는 상태 — 이후 앉았다 서면 카운트 대상이 됨
+        this.hasStood = true;
         feedback = '몸을 곧게 펴고 스쿼트를 준비하세요.';
       }
     } else {
