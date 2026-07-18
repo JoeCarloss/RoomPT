@@ -287,10 +287,14 @@ export class SquatAnalyzer {
     // 전신이 프레임에 들어오면 (1) 어깨→발목 세로 간격이 크고, (2) 어깨<엉덩이<발목
     // (y 증가=화면 아래) 순서가 성립. 팔만/부분만 잡히면 MediaPipe가 추정한 몸이 세로로
     // 뭉개지거나 순서가 깨져 걸러진다. 이게 팔·회전 팬텀 카운트의 근본 차단막.
-    const ankleY = Math.max(leftAnkle.y, rightAnkle.y);
-    const verticalSpan = ankleY - shoulderMid.y;
-    const anatomicalOrder = shoulderMid.y < hipMid.y - 0.02 && hipMid.y < ankleY - 0.05;
-    const bodyPlausible = verticalSpan > 0.4 && anatomicalOrder;
+    // 원본 프레임이 가로(landscape)라 서 있는 사람이 좌표계에서 90° 누워 x축으로 퍼짐
+    // (실기기 로그: 어깨/엉덩이/발목 y가 전부 0.4~0.5로 뭉치고 y-span 0.02~0.06). 따라서
+    // 세로 간격이 아니라 어깨→발목 유클리드 거리로 전신 크기를 판정(방향 무관). 팔만/부분만
+    // 잡히면 이 거리가 작아져 걸러진다. 너무 멀어도(전신이 작아도) 작아져 함께 걸러짐.
+    const ankleCx = (leftAnkle.x + rightAnkle.x) / 2;
+    const ankleCy = (leftAnkle.y + rightAnkle.y) / 2;
+    const bodyExtent = Math.hypot(ankleCx - shoulderMid.x, ankleCy - shoulderMid.y);
+    const bodyPlausible = bodyExtent > 0.3;
     // 측면 촬영 시 먼 쪽 다리는 가시성이 낮을 수 있으므로 "한쪽 다리 이상"을 요구
     const fullBodyVisible =
       shouldersVisible && hipsVisible && (leftLegVisible || rightLegVisible) && bodyPlausible;
@@ -344,6 +348,9 @@ export class SquatAnalyzer {
       this.logDebug({
         p: 'acq',
         track: this.isTracking,
+        ext: Math.round(bodyExtent * 100),
+        plaus: bodyPlausible,
+        unst: unstable,
         ready: this.readyStreak,
         full: fullBodyVisible,
         unstable,
@@ -591,7 +598,7 @@ export class SquatAnalyzer {
         front: isFrontView,
         rep: repCompleted,
         sw: Math.round(shoulderWidth * 100),
-        span: Math.round(verticalSpan * 100),
+        ext: Math.round(bodyExtent * 100),
         plaus: bodyPlausible,
       },
       repCompleted,
