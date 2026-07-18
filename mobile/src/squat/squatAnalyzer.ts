@@ -112,6 +112,11 @@ export interface SquatAnalysis {
   readyProgress: number;
 }
 
+// 실기기 튜닝용 디버그 로그. logcat(ReactNativeJS 태그)/Metro 콘솔에 찍힘.
+// 튜닝 끝나면 false로. 매 프레임이 아니라 몇 프레임에 한 번만 출력(스팸 방지).
+const DEBUG_LOG = true;
+const DEBUG_EVERY_N_FRAMES = 6;
+
 const VISIBILITY_THRESHOLD = 0.5;
 // 상태(UP/DOWN) 전환에 필요한 최소 연속 프레임 수. 화면 회전·가림·스쳐 지나감 등으로
 // 생기는 단발성 쓰레기 랜드마크가 DOWN→UP 사이클로 오인돼 카운트가 올라가는 것을 방지.
@@ -168,6 +173,18 @@ export class SquatAnalyzer {
   // 서 있는 상태를 한 번이라도 확인했는지 — 앉은 채로 시작해 처음 일어서는 동작을
   // 스쿼트 1회로 오인하지 않도록, 이게 true가 된 뒤의 앉았다-서는 사이클만 카운트
   private hasStood = false;
+  private debugFrame = 0;
+
+  private logDebug(fields: Record<string, unknown>): void {
+    if (!DEBUG_LOG) {
+      return;
+    }
+    this.debugFrame += 1;
+    if (this.debugFrame % DEBUG_EVERY_N_FRAMES !== 0) {
+      return;
+    }
+    console.log('[squat]', JSON.stringify(fields));
+  }
   private isTracking = false;
   private readyStreak = 0;
   private lostStreak = 0;
@@ -310,6 +327,17 @@ export class SquatAnalyzer {
       } else {
         feedback = '좋아요, 그대로 잠시 유지하세요.';
       }
+      this.logDebug({
+        p: 'acq',
+        track: this.isTracking,
+        ready: this.readyStreak,
+        full: fullBodyVisible,
+        unstable,
+        shV: shouldersVisible,
+        hpV: hipsVisible,
+        lLeg: leftLegVisible,
+        rLeg: rightLegVisible,
+      });
       return {
         angles,
         state: this.poseState,
@@ -516,6 +544,19 @@ export class SquatAnalyzer {
       }
     }
 
+    this.logDebug({
+      p: 'trk',
+      knee: Math.round(targetKneeAngle),
+      hip: Math.round(targetHipAngle),
+      pose: this.poseState,
+      stood: this.hasStood,
+      down: this.downStreak,
+      up: this.upStreak,
+      cnt: this.count,
+      st: state,
+      front: isFrontView,
+      rep: repCompleted,
+    });
     return { angles, state, feedback, count: this.count, repCompleted, tracking: true, readyProgress: 1 };
   }
 }
