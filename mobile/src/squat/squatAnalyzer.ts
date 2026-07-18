@@ -383,6 +383,10 @@ export class SquatAnalyzer {
     const ankleWidth = Math.abs(leftAnkle.x - rightAnkle.x);
     const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x) || 0.0001;
     const hipWidth = Math.abs(leftHip.x - rightHip.x) || 0.0001;
+    // 몸이 화면에서 너무 작으면(멀거나 비스듬히 서서 어깨/엉덩이 폭이 정규화 0.0x대로
+    // 붕괴) 폭 기반 판정이 전부 노이즈에 묻힘 — 실기기 로그에서 서 있을 때 sw가 0.00~0.01로
+    // 떨어져 고개·기울기 경고가 상시 오발동. 폭이 충분히 클 때만 폭 기반 경고를 신뢰.
+    const measurementsReliable = shoulderWidth > 0.08 && hipWidth > 0.05;
 
     // 무릎 모임 감지는 양쪽 무릎과 발목이 모두 선명하게 보일 때만 판단하여 측면 오작동 차단
     const isKneeCollapsing =
@@ -402,17 +406,18 @@ export class SquatAnalyzer {
       rightLegVisible &&
       hipWidth > shoulderWidth * 0.6;
 
-    // 몸이 좌우 한쪽으로 기울어짐 (양쪽 엉덩이 높이 차이가 엉덩이 폭 대비 큼)
+    // 몸이 좌우 한쪽으로 기울어짐 (양쪽 엉덩이 높이 차이가 큼). 폭 대비 비율 + 절대 최소
+    // 임계값(0.04)을 함께 둬서, 엉덩이 폭이 작을 때 미세 노이즈로 오발동하는 것 방지.
     const isHipTilted =
       isFrontView &&
-      Math.abs(leftHip.y - rightHip.y) > hipWidth * 0.35;
+      Math.abs(leftHip.y - rightHip.y) > Math.max(hipWidth * 0.35, 0.04);
     // 중심축(양 발목 중점) 대비 몸통 좌우 쏠림 — 골반이 수평이어도 몸 전체가
-    // 한쪽 다리 위로 이동/기울어진 경우를 감지. 정면 뷰에서만 의미 있음.
+    // 한쪽 다리 위로 이동/기울어진 경우를 감지. 절대 최소 임계값(0.05) 병행.
     const ankleMidX = (leftAnkle.x + rightAnkle.x) / 2;
     const isBodyShiftedSideways =
       isFrontView &&
       Math.max(Math.abs(shoulderMid.x - ankleMidX), Math.abs(hipMid.x - ankleMidX)) >
-        shoulderWidth * 0.3;
+        Math.max(shoulderWidth * 0.3, 0.05);
     // 좌우 무릎 굽힘 비대칭 — 한쪽 무릎만 더 깊게 굽혀지는 경우. 정면 뷰에서 실제로
     // 앉는 중일 때만 판단(서 있을 때는 둘 다 ~180°라 무의미). 정면 투영 각도는 원근
     // 때문에 노이즈가 커서 임계값을 25°로 넉넉하게 둠 — 실기기 튜닝 대상.
@@ -522,26 +527,31 @@ export class SquatAnalyzer {
 
     // 카운팅 로직은 위에서 이미 끝났으므로, 아래는 이번 프레임에 보여주고 말해줄
     // 피드백 문구만 우선순위대로 덮어쓴다 (무릎 모임이 최우선이라 이미 잡혔으면 건너뜀).
+    // 라이브 경고는 (1) 연속 WARNING_PERSIST_FRAMES 이상 지속돼야(flagStreaks) 표시 —
+    // 단발 노이즈 차단, (2) 폭 기반 경고는 측정이 신뢰 가능할 때만(measurementsReliable) —
+    // 몸이 작을 때 폭 노이즈로 상시 오발동하던 문제 해결. 상체 숙임(lean)은 각도 기반이라
+    // 폭 신뢰도와 무관하게 표시.
+    const P = WARNING_PERSIST_FRAMES;
     if (state !== 'WARNING') {
-      if (isLeaningForward) {
+      if (this.flagStreaks.lean >= P) {
         state = 'WARNING';
         feedback = '주의: 상체가 너무 앞으로 숙여지고 있습니다. 가슴을 펴고 허리를 곧게 세워주세요!';
-      } else if (isHipTilted) {
+      } else if (measurementsReliable && this.flagStreaks.hipTilt >= P) {
         state = 'WARNING';
         feedback = '주의: 몸이 한쪽으로 기울었습니다. 양쪽 다리에 체중을 균등하게 실어주세요.';
-      } else if (isBodyShiftedSideways) {
+      } else if (measurementsReliable && this.flagStreaks.lateralShift >= P) {
         state = 'WARNING';
         feedback = '주의: 몸이 중심에서 한쪽으로 쏠렸습니다. 체중을 양발 가운데로 옮겨주세요.';
-      } else if (isKneeBendAsymmetric) {
+      } else if (measurementsReliable && this.flagStreaks.kneeAsymmetry >= P) {
         state = 'WARNING';
         feedback = '주의: 한쪽 무릎만 더 굽혀지고 있습니다. 양쪽 무릎을 같은 깊이로 굽혀주세요.';
-      } else if (isHeadDroppingDown) {
+      } else if (measurementsReliable && this.flagStreaks.headDrop >= P) {
         state = 'WARNING';
         feedback = '고개를 들고 정면을 바라보세요.';
-      } else if (this.poseState === 'UP' && isStanceTooNarrow) {
+      } else if (this.poseState === 'UP' && measurementsReliable && this.flagStreaks.stance >= P && isStanceTooNarrow) {
         state = 'WARNING';
         feedback = '발 너비가 너무 좁습니다. 어깨 너비만큼 벌려주세요.';
-      } else if (this.poseState === 'UP' && isStanceTooWide) {
+      } else if (this.poseState === 'UP' && measurementsReliable && this.flagStreaks.stance >= P && isStanceTooWide) {
         state = 'WARNING';
         feedback = '발 너비가 너무 넓습니다. 어깨 너비 정도로 좁혀주세요.';
       }
@@ -560,9 +570,9 @@ export class SquatAnalyzer {
         rep: repCompleted,
         sw: Math.round(shoulderWidth * 100),
         hw: Math.round(hipWidth * 100),
-        hd: isHeadDroppingDown,
-        kc: isKneeCollapsing,
-        lf: isLeaningForward,
+        rel: measurementsReliable,
+        st_hd: this.flagStreaks.headDrop,
+        st_ht: this.flagStreaks.hipTilt,
       },
       repCompleted,
     );
