@@ -55,8 +55,10 @@ class OneEuroFilter {
 // 실기기 피드백(스켈레톤이 동작을 못 따라옴)에 따라 지연을 줄이는 방향으로 조정.
 // minCutoff를 높이면 스무딩↓·반응성↑(지연↓), beta를 높이면 빠른 동작의 지연↓.
 // 정규화 좌표(0~1) 기준. 아직 떨리면 minCutoff↓, 여전히 굼뜨면 minCutoff·beta↑.
-const MIN_CUTOFF = 3.0;
-const BETA = 0.7;
+// 실기기 로그에서 무릎각 노이즈가 극심(1초 내 149↔177 진동)해 가짜 카운트 유발 →
+// 스무딩을 대폭 강화(3.0→1.2). 스켈레톤이 약간 지연되더라도 카운트 안정성 우선.
+const MIN_CUTOFF = 1.2;
+const BETA = 0.3;
 const D_CUTOFF = 1.0;
 // dt가 비정상(첫 프레임, 앱 복귀 후 큰 공백)일 때 쓰는 기본 간격(초, ~30fps 가정)
 const DEFAULT_DT = 1 / 30;

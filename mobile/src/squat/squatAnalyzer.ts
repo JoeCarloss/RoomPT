@@ -275,15 +275,25 @@ export class SquatAnalyzer {
     const hipsVisible =
       (leftHip.visibility ?? 1) > VISIBILITY_THRESHOLD &&
       (rightHip.visibility ?? 1) > VISIBILITY_THRESHOLD;
-    // 측면 촬영 시 먼 쪽 다리는 가시성이 낮을 수 있으므로 "한쪽 다리 이상"을 요구
-    const fullBodyVisible = shouldersVisible && hipsVisible && (leftLegVisible || rightLegVisible);
-
     // 프레임 간 몸 중심점(어깨/엉덩이 중점) 이동량 — 기기 흔들림·인식 튐 감지
     const hipMid = { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2 };
     const shoulderMid = {
       x: (leftShoulder.x + rightShoulder.x) / 2,
       y: (leftShoulder.y + rightShoulder.y) / 2,
     };
+
+    // ⚠️ 이 모델은 visibility를 항상 ~1.0으로 반환해 게이트로 못 씀(실기기: 팔만 나와도
+    // vis:100, 그 상태로 카운트됨). 대신 기하학으로 "진짜 전신 자세"인지 검증한다:
+    // 전신이 프레임에 들어오면 (1) 어깨→발목 세로 간격이 크고, (2) 어깨<엉덩이<발목
+    // (y 증가=화면 아래) 순서가 성립. 팔만/부분만 잡히면 MediaPipe가 추정한 몸이 세로로
+    // 뭉개지거나 순서가 깨져 걸러진다. 이게 팔·회전 팬텀 카운트의 근본 차단막.
+    const ankleY = Math.max(leftAnkle.y, rightAnkle.y);
+    const verticalSpan = ankleY - shoulderMid.y;
+    const anatomicalOrder = shoulderMid.y < hipMid.y - 0.02 && hipMid.y < ankleY - 0.05;
+    const bodyPlausible = verticalSpan > 0.4 && anatomicalOrder;
+    // 측면 촬영 시 먼 쪽 다리는 가시성이 낮을 수 있으므로 "한쪽 다리 이상"을 요구
+    const fullBodyVisible =
+      shouldersVisible && hipsVisible && (leftLegVisible || rightLegVisible) && bodyPlausible;
     let unstable = false;
     if (this.prevHipMid && this.prevShoulderMid) {
       const hipMove = Math.hypot(hipMid.x - this.prevHipMid.x, hipMid.y - this.prevHipMid.y);
@@ -581,18 +591,8 @@ export class SquatAnalyzer {
         front: isFrontView,
         rep: repCompleted,
         sw: Math.round(shoulderWidth * 100),
-        rel: measurementsReliable,
-        // 핵심 랜드마크 최소 가시성(×100) — 낮으면 추정치라 카운트하면 안 됨
-        vis: Math.round(
-          Math.min(
-            leftHip.visibility ?? 1,
-            rightHip.visibility ?? 1,
-            leftKnee.visibility ?? 1,
-            rightKnee.visibility ?? 1,
-            leftAnkle.visibility ?? 1,
-            rightAnkle.visibility ?? 1,
-          ) * 100,
-        ),
+        span: Math.round(verticalSpan * 100),
+        plaus: bodyPlausible,
       },
       repCompleted,
     );
