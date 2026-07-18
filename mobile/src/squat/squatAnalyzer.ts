@@ -117,7 +117,10 @@ export interface SquatAnalysis {
 const DEBUG_LOG = true;
 const DEBUG_EVERY_N_FRAMES = 6;
 
-const VISIBILITY_THRESHOLD = 0.5;
+// 0.5→0.7 상향: MediaPipe는 화면 밖/가려진 부위도 33개 랜드마크를 "추정"해 반환하는데,
+// 그 추정치가 0.5~0.7 가시성으로 나와 "보인다"고 오인됨(실기기: 팔만 나왔는데 카운트됨).
+// 0.7로 올려 실제로 선명하게 보이는 랜드마크만 인정 → 부분 프레임 팬텀 카운트 차단.
+const VISIBILITY_THRESHOLD = 0.7;
 // 상태(UP/DOWN) 전환에 필요한 최소 연속 프레임 수. 화면 회전·가림·스쳐 지나감 등으로
 // 생기는 단발성 쓰레기 랜드마크가 DOWN→UP 사이클로 오인돼 카운트가 올라가는 것을 방지.
 // ~30fps 기준 3프레임 ≈ 0.1초라 실제 스쿼트 동작 인식에는 체감 지연 없음.
@@ -477,12 +480,13 @@ export class SquatAnalyzer {
       this.upStreak += 1;
       this.downStreak = 0;
       state = 'UP';
-      // 어깨 폭이 붕괴한(sw<0.03) 쓰레기 프레임에서는 카운트 금지 — 폰 흔들림/숙임으로
-      // 랜드마크가 뭉개질 때 생기는 팬텀 카운트 방지(실기기: 완료 누르려 숙일 때 발생).
+      // 어깨 폭이 완전히 붕괴한(sw<0.015) 쓰레기 프레임에서만 카운트 금지 — 폰 흔들림/숙임
+      // 랜드마크 뭉개짐(sw~0.00) 팬텀 방지. 측면 뷰는 어깨가 앞뒤로 겹쳐 폭이 정상적으로
+      // 0.02~0.04라 0.015로 낮춰 정상 측면 카운트를 막지 않음(실기기 로그).
       if (
         this.poseState === 'DOWN' &&
         this.upStreak >= STATE_DEBOUNCE_FRAMES &&
-        shoulderWidth > 0.03
+        shoulderWidth > 0.015
       ) {
         this.poseState = 'UP';
         // 진짜 스쿼트 사이클(서있다→앉았다→섬)만 카운트. 앉은 상태로 시작해 처음
@@ -577,10 +581,18 @@ export class SquatAnalyzer {
         front: isFrontView,
         rep: repCompleted,
         sw: Math.round(shoulderWidth * 100),
-        hw: Math.round(hipWidth * 100),
         rel: measurementsReliable,
-        st_hd: this.flagStreaks.headDrop,
-        st_ht: this.flagStreaks.hipTilt,
+        // 핵심 랜드마크 최소 가시성(×100) — 낮으면 추정치라 카운트하면 안 됨
+        vis: Math.round(
+          Math.min(
+            leftHip.visibility ?? 1,
+            rightHip.visibility ?? 1,
+            leftKnee.visibility ?? 1,
+            rightKnee.visibility ?? 1,
+            leftAnkle.visibility ?? 1,
+            rightAnkle.visibility ?? 1,
+          ) * 100,
+        ),
       },
       repCompleted,
     );
