@@ -23,13 +23,34 @@ const SKELETON_CONNECTIONS: Array<[number, number]> = [
   [26, 28],
 ];
 
-/** 렙별 최저점 스냅샷들의 일관성 분석: 깊이 차트 + 스켈레톤 겹쳐 그리기 */
+function scoreColor(score: number): string {
+  return score >= 80 ? '#39ff14' : score >= 60 ? '#00e5ff' : '#ff2a6d';
+}
+
+/** 렙별 최저점 스냅샷들의 일관성 분석: 폼 점수 + 깊이 차트 + 스켈레톤 겹쳐 그리기 */
 function RepConsistency({ snapshots }: { snapshots: RepSnapshot[] }) {
   const angles = snapshots.map((s) => s.minKneeAngle);
   const mean = Math.round(angles.reduce((a, b) => a + b, 0) / angles.length);
   const spread = Math.max(...angles) - Math.min(...angles);
   const consistencyLabel =
     spread <= 8 ? '매우 일정해요 👍' : spread <= 15 ? '대체로 일정해요' : '깊이가 들쭉날쭉해요 — 일정한 깊이를 목표로 해보세요';
+
+  // 폼 점수 (구버전 기록엔 없을 수 있으므로 방어). 세션 평균 + 가장 흔한 문제 집계.
+  const scored = snapshots.filter((s) => typeof s.score === 'number');
+  const avgScore =
+    scored.length > 0
+      ? Math.round(scored.reduce((a, s) => a + (s.score ?? 0), 0) / scored.length)
+      : null;
+  const issueCounts = new Map<string, number>();
+  for (const s of snapshots) {
+    for (const issue of s.issues ?? []) {
+      issueCounts.set(issue, (issueCounts.get(issue) ?? 0) + 1);
+    }
+  }
+  const topIssues = [...issueCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([label, n]) => `${label} ${n}회`);
 
   // 모든 스냅샷의 스켈레톤을 한 화면에 겹쳐 그리기 위한 공통 스케일 계산
   const W = 220;
@@ -61,6 +82,20 @@ function RepConsistency({ snapshots }: { snapshots: RepSnapshot[] }) {
 
   return (
     <View style={styles.analysisBox}>
+      {avgScore !== null && (
+        <View style={styles.scoreHeader}>
+          <Text style={[styles.scoreValue, { color: scoreColor(avgScore) }]}>{avgScore}</Text>
+          <View style={styles.scoreMeta}>
+            <Text style={styles.scoreLabel}>평균 폼 점수</Text>
+            {topIssues.length > 0 ? (
+              <Text style={styles.scoreIssues}>주요 개선점: {topIssues.join(' · ')}</Text>
+            ) : (
+              <Text style={styles.scoreIssues}>지적사항 없이 깔끔했어요 👍</Text>
+            )}
+          </View>
+        </View>
+      )}
+
       <Text style={styles.analysisTitle}>
         자세 일관성 — 평균 깊이 {mean}° · 편차 {spread}°
       </Text>
@@ -76,6 +111,9 @@ function RepConsistency({ snapshots }: { snapshots: RepSnapshot[] }) {
               <View style={[styles.depthFill, { width: `${pct}%` }]} />
             </View>
             <Text style={styles.depthAngle}>{s.minKneeAngle}°</Text>
+            {typeof s.score === 'number' && (
+              <Text style={[styles.repScore, { color: scoreColor(s.score) }]}>{s.score}점</Text>
+            )}
           </View>
         );
       })}
@@ -332,6 +370,39 @@ const styles = StyleSheet.create({
     borderTopColor: '#1b243d',
     padding: 14,
     gap: 8,
+  },
+  scoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingBottom: 12,
+    marginBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#1b243d',
+  },
+  scoreValue: {
+    fontSize: 40,
+    fontWeight: '800',
+    minWidth: 64,
+  },
+  scoreMeta: {
+    flex: 1,
+    gap: 3,
+  },
+  scoreLabel: {
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  scoreIssues: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  repScore: {
+    fontSize: 11,
+    fontWeight: '700',
+    width: 40,
+    textAlign: 'right',
   },
   analysisTitle: {
     color: '#f8fafc',

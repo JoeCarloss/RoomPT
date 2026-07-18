@@ -18,6 +18,69 @@ export interface RepSnapshot {
   hipAngleAtBottom: number;
   /** 엉덩이 중점을 원점, 몸통 길이를 1로 정규화한 33개 랜드마크 — 위치·거리 무관 비교용 */
   landmarks: { x: number; y: number }[];
+  /** 이 렙의 폼 점수 0~100 (깊이 + 이 렙 동안 발생한 자세 문제 종합). 구버전 기록엔 없음 */
+  score?: number;
+  /** 이 렙에서 감점된 문제들의 사람이 읽을 수 있는 라벨. 구버전 기록엔 없음 */
+  issues?: string[];
+}
+
+/** 렙 동안 누적된 자세 문제 플래그 */
+interface RepFlags {
+  kneeCollapse: boolean;
+  lean: boolean;
+  hipTilt: boolean;
+  lateralShift: boolean;
+  kneeAsymmetry: boolean;
+  headDrop: boolean;
+  stance: boolean;
+}
+
+function emptyRepFlags(): RepFlags {
+  return {
+    kneeCollapse: false,
+    lean: false,
+    hipTilt: false,
+    lateralShift: false,
+    kneeAsymmetry: false,
+    headDrop: false,
+    stance: false,
+  };
+}
+
+// 자세 문제별 감점과 라벨. 무릎 모임은 안전 직결이라 가장 크게, 나머지는 경중에 따라.
+const ISSUE_PENALTY: Record<keyof RepFlags, { penalty: number; label: string }> = {
+  kneeCollapse: { penalty: 20, label: '무릎 모임' },
+  lean: { penalty: 12, label: '상체 숙임' },
+  hipTilt: { penalty: 10, label: '골반 기울기' },
+  lateralShift: { penalty: 10, label: '중심 쏠림' },
+  kneeAsymmetry: { penalty: 10, label: '무릎 비대칭' },
+  headDrop: { penalty: 8, label: '고개 처짐' },
+  stance: { penalty: 8, label: '발 너비' },
+};
+
+/**
+ * 렙 폼 점수 계산 — 100점에서 (1) 깊이 부족과 (2) 이 렙 동안 발생한 자세 문제를 감점.
+ * 깊이: 무릎 각도 100° 이하면 충분(감점 0), 얕을수록 비례 감점(최대 40). 자세 문제:
+ * 종류별 고정 감점. 전부 룰 기반이라 왜 깎였는지 issues로 투명하게 설명 가능.
+ */
+function computeRepScore(minKneeAngle: number, flags: RepFlags): { score: number; issues: string[] } {
+  const issues: string[] = [];
+  let score = 100;
+
+  // 깊이 감점: 100°까지는 만점, 그 위로 1도당 1.2점(최대 40점)
+  if (minKneeAngle > 100) {
+    score -= Math.min(40, (minKneeAngle - 100) * 1.2);
+    issues.push('깊이 부족');
+  }
+
+  (Object.keys(flags) as (keyof RepFlags)[]).forEach((key) => {
+    if (flags[key]) {
+      score -= ISSUE_PENALTY[key].penalty;
+      issues.push(ISSUE_PENALTY[key].label);
+    }
+  });
+
+  return { score: Math.max(0, Math.round(score)), issues };
 }
 
 export interface SquatAnalysis {
@@ -91,6 +154,8 @@ export class SquatAnalyzer {
   private prevHipMid: { x: number; y: number } | null = null;
   private prevShoulderMid: { x: number; y: number } | null = null;
   private repSnapshots: RepSnapshot[] = [];
+  // 현재 렙 동안 발생한 자세 문제 누적 — 렙 완료 시 점수 계산에 쓰고 초기화
+  private currentRepFlags: RepFlags = emptyRepFlags();
   private bottomCandidate: {
     kneeAngle: number;
     hipAngle: number;
@@ -108,6 +173,7 @@ export class SquatAnalyzer {
     this.prevHipMid = null;
     this.prevShoulderMid = null;
     this.repSnapshots = [];
+    this.currentRepFlags = emptyRepFlags();
     this.bottomCandidate = null;
   }
 
@@ -300,6 +366,16 @@ export class SquatAnalyzer {
     const isStanceTooNarrow = isFrontView && ankleWidth < shoulderWidth * 0.6;
     const isStanceTooWide = isFrontView && ankleWidth > shoulderWidth * 1.8;
 
+    // 이번 렙에서 발생한 자세 문제 누적 (렙 완료 시 점수 계산에 사용, 완료 후 초기화).
+    // 이 지점은 전신 인식 게이트를 통과한 프레임에서만 도달하므로 쓰레기 프레임은 안 섞임.
+    if (isKneeCollapsing) this.currentRepFlags.kneeCollapse = true;
+    if (isLeaningForward) this.currentRepFlags.lean = true;
+    if (isHipTilted) this.currentRepFlags.hipTilt = true;
+    if (isBodyShiftedSideways) this.currentRepFlags.lateralShift = true;
+    if (isKneeBendAsymmetric) this.currentRepFlags.kneeAsymmetry = true;
+    if (isHeadDroppingDown) this.currentRepFlags.headDrop = true;
+    if (isStanceTooNarrow || isStanceTooWide) this.currentRepFlags.stance = true;
+
     let repCompleted = false;
     let state: SquatState;
     let feedback: string;
@@ -327,16 +403,24 @@ export class SquatAnalyzer {
         this.count += 1;
         repCompleted = true;
         feedback = '좋습니다! 다음 횟수를 위해 천천히 내려가세요.';
-        // 이번 렙의 최저점 스냅샷 확정
+        // 이번 렙의 최저점 스냅샷 확정 + 폼 점수 계산
         if (this.bottomCandidate) {
+          const { score, issues } = computeRepScore(
+            this.bottomCandidate.kneeAngle,
+            this.currentRepFlags,
+          );
           this.repSnapshots.push({
             rep: this.count,
             minKneeAngle: Math.round(this.bottomCandidate.kneeAngle),
             hipAngleAtBottom: Math.round(this.bottomCandidate.hipAngle),
             landmarks: this.bottomCandidate.landmarks,
+            score,
+            issues,
           });
           this.bottomCandidate = null;
         }
+        // 다음 렙을 위해 문제 누적 초기화
+        this.currentRepFlags = emptyRepFlags();
       } else if (this.poseState === 'DOWN') {
         // 전환 확정 대기 중 (디바운스)
         feedback = '천천히 엉덩이를 뒤로 밀어 일어나세요.';

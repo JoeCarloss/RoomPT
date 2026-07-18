@@ -199,6 +199,11 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
         ? 0
         : Math.round((lastRepAtRef.current - firstRepAtRef.current) / 1000);
     const repSnapshots = analyzerRef.current.getRepSnapshots();
+    const scored = repSnapshots.filter((s) => typeof s.score === 'number');
+    const avgScore =
+      scored.length > 0
+        ? Math.round(scored.reduce((a, s) => a + (s.score ?? 0), 0) / scored.length)
+        : null;
     savingRef.current = true;
     saveRecord({
       endedAt: new Date().toISOString(),
@@ -207,7 +212,18 @@ export function CameraScreen({ onShowGuide, onShowHistory }: CameraScreenProps) 
       repSnapshots: repSnapshots.length > 0 ? repSnapshots : undefined,
     })
       .then(() => {
-        speak(`운동 완료! ${reps}회 기록했습니다.`, true);
+        speak(
+          avgScore !== null
+            ? `운동 완료! ${reps}회, 평균 폼 점수 ${avgScore}점입니다.`
+            : `운동 완료! ${reps}회 기록했습니다.`,
+          true,
+        );
+        Alert.alert(
+          '세트 완료',
+          avgScore !== null
+            ? `스쿼트 ${reps}회 · 평균 폼 점수 ${avgScore}점\n기록 화면에서 렙별 분석을 볼 수 있습니다.`
+            : `스쿼트 ${reps}회를 기록했습니다.`,
+        );
         reset();
       })
       .catch(() => {
