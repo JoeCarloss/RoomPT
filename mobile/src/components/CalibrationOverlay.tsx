@@ -113,6 +113,9 @@ export function CalibrationOverlay({ width, height, progress, hint }: Calibratio
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
         </View>
+        <Text style={styles.subCaption}>
+          실루엣에 정확히 맞출 필요는 없어요 — 전신만 화면에 들어오면 됩니다
+        </Text>
       </View>
     </View>
   );
@@ -145,5 +148,12 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
     backgroundColor: '#00e5ff',
+  },
+  subCaption: {
+    color: '#94a3b8',
+    fontSize: 12,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowRadius: 4,
   },
 });

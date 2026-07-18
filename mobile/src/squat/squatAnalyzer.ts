@@ -47,6 +47,22 @@ function emptyRepFlags(): RepFlags {
   };
 }
 
+function emptyFlagStreaks(): Record<keyof RepFlags, number> {
+  return {
+    kneeCollapse: 0,
+    lean: 0,
+    hipTilt: 0,
+    lateralShift: 0,
+    kneeAsymmetry: 0,
+    headDrop: 0,
+    stance: 0,
+  };
+}
+
+// 점수 감점 대상으로 인정하기 전 경고가 연속으로 유지돼야 하는 최소 프레임 수.
+// 단발성(1프레임) 센서 노이즈로 억울하게 감점되는 것을 막는다.
+const WARNING_PERSIST_FRAMES = 3;
+
 // 자세 문제별 감점과 라벨. 무릎 모임은 안전 직결이라 가장 크게, 나머지는 경중에 따라.
 const ISSUE_PENALTY: Record<keyof RepFlags, { penalty: number; label: string }> = {
   kneeCollapse: { penalty: 20, label: '무릎 모임' },
@@ -67,9 +83,10 @@ function computeRepScore(minKneeAngle: number, flags: RepFlags): { score: number
   const issues: string[] = [];
   let score = 100;
 
-  // 깊이 감점: 100°까지는 만점, 그 위로 1도당 1.2점(최대 40점)
-  if (minKneeAngle > 100) {
-    score -= Math.min(40, (minKneeAngle - 100) * 1.2);
+  // 깊이 감점: 110°까지는 만점(카메라 기울기로 인한 약간의 얕은 측정 완충),
+  // 그 위로 1도당 1.0점(최대 40점). 병렬 스쿼트(~90°)에 20° 여유.
+  if (minKneeAngle > 110) {
+    score -= Math.min(40, (minKneeAngle - 110) * 1.0);
     issues.push('깊이 부족');
   }
 
@@ -156,6 +173,8 @@ export class SquatAnalyzer {
   private repSnapshots: RepSnapshot[] = [];
   // 현재 렙 동안 발생한 자세 문제 누적 — 렙 완료 시 점수 계산에 쓰고 초기화
   private currentRepFlags: RepFlags = emptyRepFlags();
+  // 경고별 연속 지속 프레임 수 — WARNING_PERSIST_FRAMES 이상일 때만 감점 인정
+  private flagStreaks: Record<keyof RepFlags, number> = emptyFlagStreaks();
   private bottomCandidate: {
     kneeAngle: number;
     hipAngle: number;
@@ -174,11 +193,24 @@ export class SquatAnalyzer {
     this.prevShoulderMid = null;
     this.repSnapshots = [];
     this.currentRepFlags = emptyRepFlags();
+    this.flagStreaks = emptyFlagStreaks();
     this.bottomCandidate = null;
   }
 
   getCount(): number {
     return this.count;
+  }
+
+  /** 경고가 연속 지속될 때만 렙 감점 플래그로 승격 — 단발 노이즈 무시 */
+  private accumulateFlag(key: keyof RepFlags, active: boolean): void {
+    if (active) {
+      this.flagStreaks[key] += 1;
+      if (this.flagStreaks[key] >= WARNING_PERSIST_FRAMES) {
+        this.currentRepFlags[key] = true;
+      }
+    } else {
+      this.flagStreaks[key] = 0;
+    }
   }
 
   getRepSnapshots(): RepSnapshot[] {
@@ -243,7 +275,9 @@ export class SquatAnalyzer {
       this.readyStreak += 1;
       this.lostStreak = 0;
     } else {
-      this.readyStreak = 0;
+      // 획득 중 단발성 가시성 깜빡임(visibility가 0.5 경계에서 파르르 떨림)에
+      // 10프레임 진행이 통째로 리셋되지 않도록 감쇠 — 지속적으로 안 보일 때만 진행 소실
+      this.readyStreak = Math.max(0, this.readyStreak - 2);
       this.lostStreak += 1;
     }
     if (!this.isTracking && this.readyStreak >= READY_FRAMES) {
@@ -368,13 +402,14 @@ export class SquatAnalyzer {
 
     // 이번 렙에서 발생한 자세 문제 누적 (렙 완료 시 점수 계산에 사용, 완료 후 초기화).
     // 이 지점은 전신 인식 게이트를 통과한 프레임에서만 도달하므로 쓰레기 프레임은 안 섞임.
-    if (isKneeCollapsing) this.currentRepFlags.kneeCollapse = true;
-    if (isLeaningForward) this.currentRepFlags.lean = true;
-    if (isHipTilted) this.currentRepFlags.hipTilt = true;
-    if (isBodyShiftedSideways) this.currentRepFlags.lateralShift = true;
-    if (isKneeBendAsymmetric) this.currentRepFlags.kneeAsymmetry = true;
-    if (isHeadDroppingDown) this.currentRepFlags.headDrop = true;
-    if (isStanceTooNarrow || isStanceTooWide) this.currentRepFlags.stance = true;
+    // 단발 노이즈 감점을 막기 위해 연속 3프레임 이상 지속된 경고만 인정(accumulateFlag).
+    this.accumulateFlag('kneeCollapse', isKneeCollapsing);
+    this.accumulateFlag('lean', isLeaningForward);
+    this.accumulateFlag('hipTilt', isHipTilted);
+    this.accumulateFlag('lateralShift', isBodyShiftedSideways);
+    this.accumulateFlag('kneeAsymmetry', isKneeBendAsymmetric);
+    this.accumulateFlag('headDrop', isHeadDroppingDown);
+    this.accumulateFlag('stance', isStanceTooNarrow || isStanceTooWide);
 
     let repCompleted = false;
     let state: SquatState;
@@ -419,8 +454,9 @@ export class SquatAnalyzer {
           });
           this.bottomCandidate = null;
         }
-        // 다음 렙을 위해 문제 누적 초기화
+        // 다음 렙을 위해 문제 누적·스트릭 초기화
         this.currentRepFlags = emptyRepFlags();
+        this.flagStreaks = emptyFlagStreaks();
       } else if (this.poseState === 'DOWN') {
         // 전환 확정 대기 중 (디바운스)
         feedback = '천천히 엉덩이를 뒤로 밀어 일어나세요.';
