@@ -457,7 +457,9 @@ export class SquatAnalyzer {
     let state: SquatState;
     let feedback: string;
 
-    if (isKneeCollapsing) {
+    // 무릎 모임 경고도 측정 신뢰(측면·원거리 노이즈 차단) + 3프레임 지속 시에만.
+    // 예전엔 무가드라 원거리 노이즈로 상시 오발동했음(실기기 로그).
+    if (measurementsReliable && this.flagStreaks.kneeCollapse >= WARNING_PERSIST_FRAMES) {
       state = 'WARNING';
       feedback = '주의: 무릎이 안으로 모이고 있습니다. 발끝 방향으로 무릎을 넓혀주세요!';
       this.downStreak = 0;
@@ -475,7 +477,13 @@ export class SquatAnalyzer {
       this.upStreak += 1;
       this.downStreak = 0;
       state = 'UP';
-      if (this.poseState === 'DOWN' && this.upStreak >= STATE_DEBOUNCE_FRAMES) {
+      // 어깨 폭이 붕괴한(sw<0.03) 쓰레기 프레임에서는 카운트 금지 — 폰 흔들림/숙임으로
+      // 랜드마크가 뭉개질 때 생기는 팬텀 카운트 방지(실기기: 완료 누르려 숙일 때 발생).
+      if (
+        this.poseState === 'DOWN' &&
+        this.upStreak >= STATE_DEBOUNCE_FRAMES &&
+        shoulderWidth > 0.03
+      ) {
         this.poseState = 'UP';
         // 진짜 스쿼트 사이클(서있다→앉았다→섬)만 카운트. 앉은 상태로 시작해 처음
         // 일어서는 동작은 hasStood가 false라 카운트 안 됨 → "이동/기립 중 오카운트" 방지.
