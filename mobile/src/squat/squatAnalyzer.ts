@@ -518,14 +518,11 @@ export class SquatAnalyzer {
       this.upStreak += 1;
       this.downStreak = Math.max(0, this.downStreak - 2);
       state = 'UP';
-      // 어깨 폭이 완전히 붕괴한(sw<0.015) 쓰레기 프레임에서만 카운트 금지 — 폰 흔들림/숙임
-      // 랜드마크 뭉개짐(sw~0.00) 팬텀 방지. 측면 뷰는 어깨가 앞뒤로 겹쳐 폭이 정상적으로
-      // 0.02~0.04라 0.015로 낮춰 정상 측면 카운트를 막지 않음(실기기 로그).
-      if (
-        this.poseState === 'DOWN' &&
-        this.upStreak >= STATE_DEBOUNCE_FRAMES &&
-        shoulderWidth > 0.015
-      ) {
+      // 측면 뷰에선 어깨가 앞뒤로 겹쳐 shoulderWidth가 ~0.01로 매우 작음 → 예전의
+      // shoulderWidth>0.015 카운트 가드가 정면 회전 시에만 통과시켜 "회전해야 카운트"
+      // 버그를 유발했음(실기기 로그). 그 가드는 제거 — 여기 도달하려면 이미 bodyPlausible
+      // (몸통·다리 길이 + 프레임 내) 게이트를 통과했으므로 쓰레기 프레임은 이미 걸러짐.
+      if (this.poseState === 'DOWN' && this.upStreak >= STATE_DEBOUNCE_FRAMES) {
         this.poseState = 'UP';
         // 진짜 스쿼트 사이클(서있다→앉았다→섬)만 카운트. 앉은 상태로 시작해 처음
         // 일어서는 동작은 hasStood가 false라 카운트 안 됨 → "이동/기립 중 오카운트" 방지.
