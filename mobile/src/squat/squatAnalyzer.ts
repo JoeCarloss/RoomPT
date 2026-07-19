@@ -294,7 +294,20 @@ export class SquatAnalyzer {
     const ankleCx = (leftAnkle.x + rightAnkle.x) / 2;
     const ankleCy = (leftAnkle.y + rightAnkle.y) / 2;
     const bodyExtent = Math.hypot(ankleCx - shoulderMid.x, ankleCy - shoulderMid.y);
-    const bodyPlausible = bodyExtent > 0.3;
+    // 팔만 보여도 MediaPipe가 전신을 지어내(visibility 1.0) 어깨-발목 거리가 커짐 →
+    // 추가 방어: 몸통(어깨-엉덩이)과 다리(엉덩이-발목)가 각각 실제 길이를 갖고, 핵심
+    // 랜드마크가 프레임 안에 있어야 함. 지어낸 골격은 이 중 하나가 깨지길 기대(실기기 확인용).
+    const torsoDist = Math.hypot(shoulderMid.x - hipMid.x, shoulderMid.y - hipMid.y);
+    const legDist = Math.hypot(hipMid.x - ankleCx, hipMid.y - ankleCy);
+    const inFrame = (p: Landmark) => p.x > -0.05 && p.x < 1.05 && p.y > -0.05 && p.y < 1.05;
+    const keyInFrame =
+      inFrame(leftShoulder) &&
+      inFrame(rightShoulder) &&
+      inFrame(leftHip) &&
+      inFrame(rightHip) &&
+      (inFrame(leftAnkle) || inFrame(rightAnkle));
+    const bodyPlausible =
+      bodyExtent > 0.3 && torsoDist > 0.1 && legDist > 0.15 && keyInFrame;
     // 측면 촬영 시 먼 쪽 다리는 가시성이 낮을 수 있으므로 "한쪽 다리 이상"을 요구
     const fullBodyVisible =
       shouldersVisible && hipsVisible && (leftLegVisible || rightLegVisible) && bodyPlausible;
@@ -347,10 +360,16 @@ export class SquatAnalyzer {
       }
       this.logDebug({
         p: 'acq',
-        track: this.isTracking,
-        ext: Math.round(bodyExtent * 100),
         plaus: bodyPlausible,
-        unst: unstable,
+        ext: Math.round(bodyExtent * 100),
+        torso: Math.round(torsoDist * 100),
+        leg: Math.round(legDist * 100),
+        kf: keyInFrame,
+        // 지어낸 골격 좌표 확인용: 어깨중점/엉덩이중점/발목중점 (×100)
+        shXY: `${Math.round(shoulderMid.x * 100)},${Math.round(shoulderMid.y * 100)}`,
+        hpXY: `${Math.round(hipMid.x * 100)},${Math.round(hipMid.y * 100)}`,
+        akXY: `${Math.round(ankleCx * 100)},${Math.round(ankleCy * 100)}`,
+        track: this.isTracking,
         ready: this.readyStreak,
         full: fullBodyVisible,
         unstable,
