@@ -113,8 +113,8 @@ export interface SquatAnalysis {
 }
 
 // 실기기 튜닝용 디버그 로그. logcat(ReactNativeJS 태그)/Metro 콘솔에 찍힘.
-// 튜닝 끝나면 false로. 매 프레임이 아니라 몇 프레임에 한 번만 출력(스팸 방지).
-const DEBUG_LOG = true;
+// 튜닝 시 true로. 코드는 남겨둠(다음 자세-교정 튜닝 때 재사용).
+const DEBUG_LOG = false;
 const DEBUG_EVERY_N_FRAMES = 6;
 
 // 0.5→0.7 상향: MediaPipe는 화면 밖/가려진 부위도 33개 랜드마크를 "추정"해 반환하는데,
