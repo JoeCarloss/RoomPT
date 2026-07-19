@@ -504,9 +504,11 @@ export class SquatAnalyzer {
       this.downStreak = 0;
       this.upStreak = 0;
     } else if (targetKneeAngle < 105) {
-      // 연속 N프레임 유지될 때만 실제 상태 전환 — 단발 노이즈 프레임은 무시
+      // 반대 스트릭은 0으로 리셋하지 않고 감쇠 — 무릎각 노이즈로 단발 튐이 있어도
+      // 진행이 통째로 사라지지 않게(실기기: 일어설 때 116↔170 진동으로 up 스트릭이
+      // 계속 리셋돼 카운트 실패). 연속 N프레임 유지 시에만 실제 상태 전환.
       this.downStreak += 1;
-      this.upStreak = 0;
+      this.upStreak = Math.max(0, this.upStreak - 2);
       if (this.downStreak >= STATE_DEBOUNCE_FRAMES) {
         this.poseState = 'DOWN';
       }
@@ -514,7 +516,7 @@ export class SquatAnalyzer {
       feedback = '완전히 내려왔습니다. 천천히 무릎과 엉덩이를 펴며 일어서세요.';
     } else if (targetKneeAngle > 150) {
       this.upStreak += 1;
-      this.downStreak = 0;
+      this.downStreak = Math.max(0, this.downStreak - 2);
       state = 'UP';
       // 어깨 폭이 완전히 붕괴한(sw<0.015) 쓰레기 프레임에서만 카운트 금지 — 폰 흔들림/숙임
       // 랜드마크 뭉개짐(sw~0.00) 팬텀 방지. 측면 뷰는 어깨가 앞뒤로 겹쳐 폭이 정상적으로
@@ -564,9 +566,10 @@ export class SquatAnalyzer {
         feedback = '몸을 곧게 펴고 스쿼트를 준비하세요.';
       }
     } else {
+      // 중간값(105~150°)은 하강·상승 중 반드시 지나는 구간 — 여기서 스트릭을 리셋하면
+      // 노이즈로 중간값을 스칠 때마다 진행이 사라짐. 스트릭을 유지(리셋 안 함)해서
+      // 무릎각이 목표 구간을 3프레임 채우기 전 잠깐 중간값을 지나도 카운트가 이어지게.
       state = this.poseState;
-      this.downStreak = 0;
-      this.upStreak = 0;
       feedback =
         this.poseState === 'DOWN'
           ? '천천히 엉덩이를 뒤로 밀어 일어나세요.'
